@@ -1,4 +1,4 @@
-<!DOCTYPE html>
+<!DOCTYAPE html>
 <html lang="es">
 <head>
   <meta charset="UTF-8" />
@@ -799,10 +799,10 @@
             <span id="llegada-fecha-badge" class="text-xs font-bold text-clinical-700 capitalize"></span>
           </div>
           <h2 class="text-xl sm:text-2xl font-extrabold text-slate-900 mt-1">
-            Lista de Pacientes por Orden de Llegada
+            Libro de Sesiones por Paciente (Orden Alfabético A–Z)
           </h2>
           <p class="text-xs sm:text-sm text-slate-500 mt-0.5">
-            Cada paciente aparece <strong>uno debajo del otro en el orden exacto en que llegó</strong>, con sus tratamientos desplegados de forma horizontal para llamarlos rápidamente.
+            Listado vertical ordenado <strong>alfabéticamente de la A a la Z</strong> (mostrando su N° de asistencia/tarjeta) y cuadrículas horizontales (<strong>Sesiones 1 a 45</strong>) con la <strong>fecha exacta</strong> en que asistió a cada sesión.
           </p>
         </div>
 
@@ -2624,13 +2624,19 @@
 
     function getPatientsSortedByCardNumber() {
       return [...patients].sort((a, b) => {
+        const apellidoA = String(a?.apellido || '').trim();
+        const apellidoB = String(b?.apellido || '').trim();
+        const byApellido = apellidoA.localeCompare(apellidoB, 'es', { sensitivity: 'base' });
+        if (byApellido !== 0) return byApellido;
+
+        const nombreA = String(a?.nombre || '').trim();
+        const nombreB = String(b?.nombre || '').trim();
+        const byNombre = nombreA.localeCompare(nombreB, 'es', { sensitivity: 'base' });
+        if (byNombre !== 0) return byNombre;
+
         const numA = parseCardOrderNumber(a);
         const numB = parseCardOrderNumber(b);
-        if (numA !== numB) return numA - numB;
-        const strA = String(a.numeroTarjeta || '').trim();
-        const strB = String(b.numeroTarjeta || '').trim();
-        if (strA && strB && strA !== strB) return strA.localeCompare(strB, 'es', { numeric: true });
-        return `${a.nombre || ''} ${a.apellido || ''}`.localeCompare(`${b.nombre || ''} ${b.apellido || ''}`, 'es');
+        return numA - numB;
       });
     }
 
