@@ -12,23 +12,19 @@
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
   <!-- FontAwesome Icons -->
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css" />
-
-  <!-- Firebase SDK (Módulos ES) para Acceso de Equipo y Sincronización en la Nube -->
+  <!-- Firebase SDK (Módulos ES) para Sincronización en la Nube de la Sala -->
   <script type="module">
     import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
     import {
       getAuth,
       signInAnonymously,
       signInWithCustomToken,
-      signInWithEmailAndPassword,
-      createUserWithEmailAndPassword,
       signOut,
       onAuthStateChanged
     } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
     import {
       getFirestore,
       doc,
-      getDoc,
       setDoc,
       onSnapshot
     } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
@@ -36,12 +32,19 @@
     const appId = typeof __app_id !== 'undefined' ? __app_id : 'sri-simon-bolivar-default';
     let firebaseConfig = null;
     try {
-      firebaseConfig = typeof __firebase_config !== 'undefined' && __firebase_config
-        ? JSON.parse(__firebase_config)
-        : null;
+      if (typeof __firebase_config !== 'undefined' && __firebase_config) {
+        firebaseConfig = typeof __firebase_config === 'string'
+          ? JSON.parse(__firebase_config)
+          : __firebase_config;
+      } else if (window.SRI_FIREBASE_CONFIG && window.SRI_FIREBASE_CONFIG.apiKey && !String(window.SRI_FIREBASE_CONFIG.apiKey).startsWith('PEGA_AQUI')) {
+        firebaseConfig = window.SRI_FIREBASE_CONFIG;
+      }
     } catch (e) {
       console.error('Error al parsear configuración de nube:', e);
     }
+
+    const ROOM_ACCESS_KEY = 'sri_simon_bolivar_room_unlocked_v1';
+    const DEFAULT_ROOM_PIN = 'SRISimonBolivar26112026';
 
     const cloudBridge = {
       enabled: Boolean(firebaseConfig),
@@ -54,13 +57,13 @@
       unsubPatients: null,
       unsubAttendance: null,
       unsubPhysiatrist: null,
+      unsubCalled: null,
+      unsubDischarges: null,
       isApplyingRemote: false
     };
 
     window.cloudBridge = cloudBridge;
-
-    const ROOM_ACCESS_KEY = 'sri_simon_bolivar_room_unlocked_v1';
-    const DEFAULT_ROOM_PIN = 'SRI2026';
+    window.DEFAULT_ROOM_PIN = DEFAULT_ROOM_PIN;
 
     function hasRoomPinSession() {
       try {
@@ -82,12 +85,6 @@
       }
     }
 
-    function showAuthFallback(show) {
-      const box = document.getElementById('auth-fallback-box');
-      if (!box) return;
-      box.classList.toggle('hidden', !show);
-    }
-
     function setCloudStatusBadge(text, mode = 'local') {
       const badge = document.getElementById('cloud-sync-badge');
       const userLabel = document.getElementById('cloud-user-label');
@@ -100,17 +97,12 @@
         local: 'bg-white/15 text-clinical-100 border-white/20'
       };
 
-      const safeEscape = typeof window.escapeHtml === 'function' ? window.escapeHtml : (s => String(s));
       badge.className = `text-[11px] font-bold px-2.5 py-1 rounded-full border flex items-center gap-1.5 ${styles[mode] || styles.local}`;
-      badge.innerHTML = `<i class="fa-solid ${mode === 'live' ? 'fa-cloud-check' : mode === 'locked' ? 'fa-lock' : 'fa-cloud'}"></i><span>${safeEscape(text)}</span>`;
+      badge.innerHTML = `<i class="fa-solid ${mode === 'live' ? 'fa-cloud-check' : mode === 'locked' ? 'fa-lock' : 'fa-cloud'}"></i><span>${window.escapeHtml(text)}</span>`;
 
       if (userLabel) {
-        if (cloudBridge.teamProfile?.email) {
-          const rolTxt = cloudBridge.teamProfile.rol ? ` (${cloudBridge.teamProfile.rol})` : '';
-          userLabel.textContent = `${cloudBridge.teamProfile.email}${rolTxt}`;
-          userLabel.classList.remove('hidden');
-        } else if (cloudBridge.currentUser && !cloudBridge.currentUser.isAnonymous && cloudBridge.currentUser.email) {
-          userLabel.textContent = cloudBridge.currentUser.email;
+        if (hasRoomPinSession() || cloudBridge.teamProfile?.nombre) {
+          userLabel.textContent = cloudBridge.teamProfile?.nombre || 'Sala SRI Simón Bolívar';
           userLabel.classList.remove('hidden');
         } else {
           userLabel.textContent = '';
@@ -135,47 +127,29 @@
       return doc(cloudBridge.db, 'artifacts', cloudBridge.appId, 'public', 'data', 'sri_rehabilitacion', docName);
     }
 
-    function getMemberDocRef(uid) {
-      return doc(cloudBridge.db, 'artifacts', cloudBridge.appId, 'public', 'data', 'sri_equipo', uid);
-    }
-
-    async function verifyTeamMembership(user) {
-      if (!user || user.isAnonymous) return null;
-      const memberRef = getMemberDocRef(user.uid);
-      const snap = await getDoc(memberRef);
-      if (!snap.exists()) {
-        return null;
-      }
-      const data = snap.data();
-      if (data && data.autorizado === false) {
-        return null;
-      }
-      return {
-        uid: user.uid,
-        email: data?.email || user.email || '',
-        nombre: data?.nombre || '',
-        rol: data?.rol || 'Equipo SRI'
-      };
-    }
-
     function detachCloudListeners() {
       if (typeof cloudBridge.unsubPatients === 'function') cloudBridge.unsubPatients();
       if (typeof cloudBridge.unsubAttendance === 'function') cloudBridge.unsubAttendance();
       if (typeof cloudBridge.unsubPhysiatrist === 'function') cloudBridge.unsubPhysiatrist();
+      if (typeof cloudBridge.unsubCalled === 'function') cloudBridge.unsubCalled();
+      if (typeof cloudBridge.unsubDischarges === 'function') cloudBridge.unsubDischarges();
       cloudBridge.unsubPatients = null;
       cloudBridge.unsubAttendance = null;
       cloudBridge.unsubPhysiatrist = null;
+      cloudBridge.unsubCalled = null;
+      cloudBridge.unsubDischarges = null;
     }
 
     function startCloudRealtimeListeners() {
-      if (!cloudBridge.enabled || !cloudBridge.db || !cloudBridge.currentUser) return;
-      if (cloudBridge.currentUser.isAnonymous && !hasRoomPinSession()) return;
+      if (!cloudBridge.enabled || !cloudBridge.db || !hasRoomPinSession()) return;
       detachCloudListeners();
       setCloudStatusBadge('Sincronizando...', 'syncing');
 
       const patientsRef = getPublicDocRef('patients_state');
       const attendanceRef = getPublicDocRef('attendance_state');
       const physiatristRef = getPublicDocRef('physiatrist_state');
+      const calledRef = getPublicDocRef('called_queue_state');
+      const dischargesRef = getPublicDocRef('discharges_state');
 
       cloudBridge.unsubPatients = onSnapshot(
         patientsRef,
@@ -194,10 +168,7 @@
         },
         (err) => {
           console.error('Error escuchando pacientes en la nube:', err);
-          setCloudStatusBadge('Error de Nube', 'locked');
-          if (typeof window.showToast === 'function') {
-            window.showToast('No se pudo sincronizar pacientes con la nube.', 'error');
-          }
+          setCloudStatusBadge('Sala Activa (Local)', 'local');
         }
       );
 
@@ -218,7 +189,6 @@
         },
         (err) => {
           console.error('Error escuchando asistencias en la nube:', err);
-          setCloudStatusBadge('Error de Nube', 'locked');
         }
       );
 
@@ -239,16 +209,52 @@
         },
         (err) => {
           console.error('Error escuchando fisiatría en la nube:', err);
-          setCloudStatusBadge('Error de Nube', 'locked');
+        }
+      );
+
+      cloudBridge.unsubCalled = onSnapshot(
+        calledRef,
+        (snap) => {
+          cloudBridge.isApplyingRemote = true;
+          try {
+            if (snap.exists() && snap.data().map && typeof snap.data().map === 'object') {
+              window.applyRemoteState('calledQueue', snap.data().map);
+            } else if (window.calledQueueMap && typeof window.calledQueueMap === 'object') {
+              setDoc(calledRef, { map: window.calledQueueMap, updatedAt: new Date().toISOString() }, { merge: true });
+            }
+            setCloudStatusBadge('Nube Sincronizada', 'live');
+          } finally {
+            cloudBridge.isApplyingRemote = false;
+          }
+        },
+        (err) => {
+          console.error('Error escuchando orden de llamada en la nube:', err);
+        }
+      );
+
+      cloudBridge.unsubDischarges = onSnapshot(
+        dischargesRef,
+        (snap) => {
+          cloudBridge.isApplyingRemote = true;
+          try {
+            if (snap.exists() && snap.data().map && typeof snap.data().map === 'object') {
+              window.applyRemoteState('discharges', snap.data().map);
+            } else if (window.dischargesMap && typeof window.dischargesMap === 'object') {
+              setDoc(dischargesRef, { map: window.dischargesMap, updatedAt: new Date().toISOString() }, { merge: true });
+            }
+            setCloudStatusBadge('Nube Sincronizada', 'live');
+          } finally {
+            cloudBridge.isApplyingRemote = false;
+          }
+        },
+        (err) => {
+          console.error('Error escuchando altas en la nube:', err);
         }
       );
     }
 
     async function syncCollectionToCloud(collectionKey, value) {
-      if (!cloudBridge.enabled || !cloudBridge.db || !cloudBridge.currentUser || cloudBridge.isApplyingRemote) {
-        return;
-      }
-      if (cloudBridge.currentUser.isAnonymous && !cloudBridge.teamProfile && !hasRoomPinSession()) {
+      if (!cloudBridge.enabled || !cloudBridge.db || !hasRoomPinSession() || cloudBridge.isApplyingRemote) {
         return;
       }
 
@@ -256,7 +262,7 @@
         setCloudStatusBadge('Guardando...', 'syncing');
         const payload = {
           updatedAt: new Date().toISOString(),
-          updatedBy: cloudBridge.teamProfile?.email || (hasRoomPinSession() ? 'Equipo Sala (Clave)' : (cloudBridge.currentUser.email || cloudBridge.currentUser.uid))
+          updatedBy: 'Equipo SRI Simón Bolívar (Clave de Sala)'
         };
         if (collectionKey === 'patients') {
           payload.items = value;
@@ -267,36 +273,34 @@
         } else if (collectionKey === 'physiatrist') {
           payload.map = value;
           await setDoc(getPublicDocRef('physiatrist_state'), payload, { merge: true });
+        } else if (collectionKey === 'calledQueue') {
+          payload.map = value;
+          await setDoc(getPublicDocRef('called_queue_state'), payload, { merge: true });
+        } else if (collectionKey === 'discharges') {
+          payload.map = value;
+          await setDoc(getPublicDocRef('discharges_state'), payload, { merge: true });
         }
         setCloudStatusBadge('Nube Sincronizada', 'live');
       } catch (err) {
         console.error(`Error guardando ${collectionKey} en nube:`, err);
-        setCloudStatusBadge('Sin conexión nube', 'locked');
+        setCloudStatusBadge('Sala Activa', 'local');
       }
     }
 
     window.syncCollectionToCloud = syncCollectionToCloud;
 
-    window.handleTeamAuthSubmit = async function (event) {
+    window.handleSingleRoomPinSubmit = async function (event) {
       event.preventDefault();
-      const modeEl = document.getElementById('auth-mode');
-      const emailEl = document.getElementById('auth-email');
-      const passEl = document.getElementById('auth-password');
-      const nombreEl = document.getElementById('auth-nombre');
-      const rolEl = document.getElementById('auth-rol');
+      const pinInput = document.getElementById('auth-room-pin');
       const errEl = document.getElementById('auth-error-msg');
-      const btnEl = document.getElementById('auth-submit-btn');
-
-      if (!emailEl || !passEl) return;
-      const email = emailEl.value.trim();
-      const password = passEl.value;
-      const mode = modeEl ? modeEl.value : 'login';
+      const btnEl = document.getElementById('auth-pin-submit-btn');
+      const enteredPin = pinInput ? pinInput.value.trim() : '';
 
       if (errEl) errEl.classList.add('hidden');
 
-      if (!cloudBridge.enabled || !cloudBridge.auth) {
+      if (enteredPin !== DEFAULT_ROOM_PIN) {
         if (errEl) {
-          errEl.textContent = 'La conexión en la nube no está configurada en este entorno.';
+          errEl.textContent = 'Clave incorrecta. Verifica la clave de acceso de la sala.';
           errEl.classList.remove('hidden');
         }
         return;
@@ -305,95 +309,40 @@
       try {
         if (btnEl) {
           btnEl.disabled = true;
-          btnEl.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i><span>Verificando...</span>';
+          btnEl.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i><span>Abriendo sala...</span>';
         }
 
-        let cred;
-        if (mode === 'register') {
-          cred = await createUserWithEmailAndPassword(cloudBridge.auth, email, password);
-          const nombre = nombreEl ? nombreEl.value.trim() : '';
-          const rol = rolEl ? rolEl.value : 'Fisioterapeuta';
-          await setDoc(getMemberDocRef(cred.user.uid), {
-            email,
-            nombre,
-            rol,
-            autorizado: true,
-            createdAt: new Date().toISOString()
-          }, { merge: true });
-        } else {
-          cred = await signInWithEmailAndPassword(cloudBridge.auth, email, password);
+        if (cloudBridge.enabled && cloudBridge.auth && !cloudBridge.currentUser) {
+          try {
+            if (typeof __initial_auth_token !== 'undefined' && __initial_auth_token) {
+              const cred = await signInWithCustomToken(cloudBridge.auth, __initial_auth_token);
+              cloudBridge.currentUser = cred.user;
+            } else {
+              const anonCred = await signInAnonymously(cloudBridge.auth);
+              cloudBridge.currentUser = anonCred.user;
+            }
+          } catch (authErr) {
+            console.warn('Acceso anónimo no habilitado en Firebase; se usará modo de sala:', authErr);
+          }
         }
 
-        const profile = await verifyTeamMembership(cred.user);
-        if (!profile) {
-          await signOut(cloudBridge.auth);
-          throw new Error('Tu usuario no está habilitado dentro del equipo autorizado del SRI Simón Bolívar.');
-        }
+        setRoomPinSession(true);
+        cloudBridge.teamProfile = {
+          nombre: 'Equipo SRI Simón Bolívar',
+          rol: 'Clave Única de Sala'
+        };
 
-        cloudBridge.currentUser = cred.user;
-        cloudBridge.teamProfile = profile;
         showAuthGate(false);
+        setCloudStatusBadge(cloudBridge.enabled ? 'Nube Sincronizada' : 'Sala Activa', cloudBridge.enabled ? 'live' : 'local');
         startCloudRealtimeListeners();
+
         if (typeof window.showToast === 'function') {
-          window.showToast(`Bienvenido/a ${profile.nombre || profile.email} (${profile.rol}).`, 'success');
-        }
-      } catch (err) {
-        console.error('Error de autenticación del equipo:', err);
-        const isProviderDisabled = err && (err.code === 'auth/operation-not-allowed' || String(err.message || '').includes('auth/operation-not-allowed'));
-        if (isProviderDisabled) {
-          showAuthFallback(true);
-        }
-        if (errEl) {
-          errEl.textContent = isProviderDisabled
-            ? 'Firebase tiene desactivado el acceso por Correo/Contraseña (auth/operation-not-allowed). Actívalo en Firebase Console > Authentication > Sign-in method o usa la Clave de Sala aquí abajo.'
-            : (err.message || 'Correo o contraseña incorrectos.');
-          errEl.classList.remove('hidden');
+          window.showToast('Bienvenido al registro compartido de la Sala SRI Simón Bolívar.', 'success');
         }
       } finally {
         if (btnEl) {
           btnEl.disabled = false;
-          btnEl.innerHTML = mode === 'register'
-            ? '<i class="fa-solid fa-user-plus"></i><span>Registrar Usuario de Sala</span>'
-            : '<i class="fa-solid fa-right-to-bracket"></i><span>Entrar al Sistema del SRI</span>';
-        }
-      }
-    };
-
-    window.unlockWithRoomPin = async function () {
-      const pinInput = document.getElementById('auth-room-pin');
-      const errEl = document.getElementById('auth-error-msg');
-      const enteredPin = pinInput ? pinInput.value.trim() : '';
-
-      if (enteredPin !== DEFAULT_ROOM_PIN) {
-        if (errEl) {
-          errEl.textContent = 'Clave de sala incorrecta. Verifica con la coordinación o activa Correo/Contraseña en Firebase.';
-          errEl.classList.remove('hidden');
-        }
-        return;
-      }
-
-      try {
-        if (cloudBridge.auth && !cloudBridge.currentUser) {
-          const anonCred = await signInAnonymously(cloudBridge.auth);
-          cloudBridge.currentUser = anonCred.user;
-        }
-        setRoomPinSession(true);
-        cloudBridge.teamProfile = {
-          email: 'equipo.sala@sri',
-          nombre: 'Equipo SRI Simón Bolívar',
-          rol: 'Clave de Sala'
-        };
-        if (errEl) errEl.classList.add('hidden');
-        showAuthGate(false);
-        startCloudRealtimeListeners();
-        if (typeof window.showToast === 'function') {
-          window.showToast('Acceso concedido con Clave de Sala.', 'success');
-        }
-      } catch (err) {
-        console.error('Error al iniciar sesión anónima para sala:', err);
-        if (errEl) {
-          errEl.textContent = 'No se pudo iniciar la sesión de sala en Firebase.';
-          errEl.classList.remove('hidden');
+          btnEl.innerHTML = '<i class="fa-solid fa-key"></i><span>Entrar a la Sala</span>';
         }
       }
     };
@@ -403,23 +352,22 @@
         detachCloudListeners();
         setRoomPinSession(false);
         cloudBridge.teamProfile = null;
-        if (cloudBridge.auth && cloudBridge.currentUser && !cloudBridge.currentUser.isAnonymous) {
-          await signOut(cloudBridge.auth);
-        }
-        if (cloudBridge.enabled && cloudBridge.auth) {
-          if (typeof __initial_auth_token !== 'undefined' && __initial_auth_token) {
-            await signInWithCustomToken(cloudBridge.auth, __initial_auth_token);
-          } else {
-            await signInAnonymously(cloudBridge.auth);
+        if (cloudBridge.auth && cloudBridge.currentUser) {
+          try {
+            await signOut(cloudBridge.auth);
+          } catch (e) {
+            console.warn('No fue necesario cerrar sesión remota:', e);
           }
         }
+        const pinInput = document.getElementById('auth-room-pin');
+        if (pinInput) pinInput.value = '';
         showAuthGate(true);
-        setCloudStatusBadge('Acceso Bloqueado', 'locked');
+        setCloudStatusBadge('Sala Bloqueada', 'locked');
         if (typeof window.showToast === 'function') {
-          window.showToast('Sesión cerrada. Ingresa con tu usuario y clave.', 'info');
+          window.showToast('Sala bloqueada. Ingresa la clave única para continuar.', 'info');
         }
       } catch (err) {
-        console.error('Error al cerrar sesión:', err);
+        console.error('Error al bloquear sala:', err);
       }
     };
 
@@ -427,63 +375,47 @@
       showAuthGate(true);
     };
 
-    (async function initCloudAndAuth() {
-      if (!cloudBridge.enabled) {
-        setCloudStatusBadge('Modo Local', 'local');
-        return;
-      }
-
-      try {
-        cloudBridge.app = initializeApp(firebaseConfig);
-        cloudBridge.auth = getAuth(cloudBridge.app);
-        cloudBridge.db = getFirestore(cloudBridge.app);
-
-        if (typeof __initial_auth_token !== 'undefined' && __initial_auth_token) {
-          await signInWithCustomToken(cloudBridge.auth, __initial_auth_token);
-        } else {
-          await signInAnonymously(cloudBridge.auth);
-        }
-
-        onAuthStateChanged(cloudBridge.auth, async (user) => {
-          cloudBridge.currentUser = user;
-          if (!user || user.isAnonymous) {
-            if (user && hasRoomPinSession()) {
-              cloudBridge.teamProfile = {
-                email: 'equipo.sala@sri',
-                nombre: 'Equipo SRI Simón Bolívar',
-                rol: 'Clave de Sala'
-              };
-              showAuthGate(false);
-              startCloudRealtimeListeners();
-              return;
-            }
-            cloudBridge.teamProfile = null;
-            detachCloudListeners();
-            setCloudStatusBadge('Requiere Usuario', 'locked');
-            showAuthGate(true);
-            return;
-          }
-
-          const profile = await verifyTeamMembership(user);
-          if (profile) {
-            cloudBridge.teamProfile = profile;
-            showAuthGate(false);
-            startCloudRealtimeListeners();
-          } else {
-            cloudBridge.teamProfile = null;
-            detachCloudListeners();
-            setCloudStatusBadge('Usuario no autorizado', 'locked');
-            showAuthGate(true);
-          }
-        });
-      } catch (err) {
-        console.error('Error inicializando autenticación y nube:', err);
-        setCloudStatusBadge('Error de conexión', 'locked');
+    function enforceSingleRoomGate() {
+      if (hasRoomPinSession()) {
+        cloudBridge.teamProfile = {
+          nombre: 'Equipo SRI Simón Bolívar',
+          rol: 'Clave Única de Sala'
+        };
+        showAuthGate(false);
+        setCloudStatusBadge(cloudBridge.enabled ? 'Nube Sincronizada' : 'Sala Activa', cloudBridge.enabled ? 'live' : 'local');
+        startCloudRealtimeListeners();
+      } else {
+        setCloudStatusBadge('Clave de Sala', 'locked');
         showAuthGate(true);
       }
-    })();
-  </script>
+    }
 
+    function runAuthBootstrap() {
+      if (cloudBridge.enabled) {
+        try {
+          cloudBridge.app = initializeApp(firebaseConfig);
+          cloudBridge.auth = getAuth(cloudBridge.app);
+          cloudBridge.db = getFirestore(cloudBridge.app);
+
+          onAuthStateChanged(cloudBridge.auth, (user) => {
+            cloudBridge.currentUser = user;
+            if (hasRoomPinSession()) {
+              startCloudRealtimeListeners();
+            }
+          });
+        } catch (err) {
+          console.error('Error inicializando Firebase:', err);
+        }
+      }
+      enforceSingleRoomGate();
+    }
+
+    if (document.readyState === 'loading') {
+      document.addEventListener('DOMContentLoaded', runAuthBootstrap);
+    } else {
+      runAuthBootstrap();
+    }
+  </script>
   <script>
     tailwind.config = {
       theme: {
@@ -525,32 +457,41 @@
         </div>
       </div>
 
-      <!-- Estado de Nube, Usuario y Pestañas Principales -->
+      <!-- Estado de Sala y Pestañas Principales -->
       <div class="flex flex-col lg:flex-row lg:items-center gap-2.5 w-full sm:w-auto">
         <div class="flex flex-wrap items-center justify-between sm:justify-end gap-2">
-          <button type="button" onclick="openAuthGateModal()" id="cloud-sync-badge" class="text-[11px] font-bold px-2.5 py-1 rounded-full border bg-white/15 text-clinical-100 border-white/20 flex items-center gap-1.5 transition" title="Estado de sincronización y cuenta del equipo">
-            <i class="fa-solid fa-cloud"></i>
-            <span>Conectando...</span>
+          <button type="button" onclick="openAuthGateModal()" id="cloud-sync-badge" class="text-[11px] font-bold px-2.5 py-1 rounded-full border bg-white/15 text-clinical-100 border-white/20 flex items-center gap-1.5 transition" title="Estado de la sala">
+            <i class="fa-solid fa-lock"></i>
+            <span>Clave de Sala</span>
           </button>
-          <span id="cloud-user-label" class="hidden text-[11px] font-semibold bg-clinical-900/60 border border-white/15 px-2.5 py-1 rounded-full text-emerald-200 truncate max-w-[200px]"></span>
-          <button type="button" onclick="logoutTeamUser()" class="text-[11px] font-bold px-2.5 py-1 rounded-full bg-white/10 hover:bg-white/20 border border-white/20 text-white transition flex items-center gap-1" title="Cambiar usuario o cerrar sesión">
-            <i class="fa-solid fa-right-from-bracket"></i>
-            <span>Salir</span>
+          <span id="cloud-user-label" class="hidden text-[11px] font-semibold bg-clinical-900/60 border border-white/15 px-2.5 py-1 rounded-full text-emerald-200 truncate max-w-[210px]"></span>
+          <button type="button" onclick="logoutTeamUser()" class="text-[11px] font-bold px-2.5 py-1 rounded-full bg-white/10 hover:bg-white/20 border border-white/20 text-white transition flex items-center gap-1" title="Bloquear acceso de la sala">
+            <i class="fa-solid fa-lock"></i>
+            <span>Bloquear</span>
           </button>
         </div>
 
         <!-- Pestañas Principales -->
-        <nav class="flex bg-clinical-900/50 p-1 rounded-xl border border-white/10 self-start sm:self-auto w-full sm:w-auto">
-          <button type="button" onclick="switchTab('asistencia')" id="nav-tab-asistencia" class="flex-1 sm:flex-initial px-3.5 py-2 rounded-lg text-xs sm:text-sm font-bold bg-white text-clinical-800 shadow-2xs transition flex items-center justify-center gap-1.5">
+        <nav class="flex flex-wrap bg-clinical-900/50 p-1 rounded-xl border border-white/10 self-start sm:self-auto w-full sm:w-auto gap-1">
+          <button type="button" onclick="switchTab('asistencia')" id="nav-tab-asistencia" class="flex-1 sm:flex-initial px-3 py-2 rounded-lg text-xs sm:text-sm font-bold bg-white text-clinical-800 shadow-2xs transition flex items-center justify-center gap-1.5">
             <i class="fa-solid fa-clipboard-check"></i>
             <span>Asistencia</span>
           </button>
-          <button type="button" onclick="switchTab('pacientes')" id="nav-tab-pacientes" class="flex-1 sm:flex-initial px-3.5 py-2 rounded-lg text-xs sm:text-sm font-semibold text-clinical-100 hover:text-white transition flex items-center justify-center gap-1.5">
+          <button type="button" onclick="switchTab('llegada')" id="nav-tab-llegada" class="flex-1 sm:flex-initial px-3 py-2 rounded-lg text-xs sm:text-sm font-semibold text-clinical-100 hover:text-white transition flex items-center justify-center gap-1.5">
+            <i class="fa-solid fa-list-ol"></i>
+            <span>Orden de Llegada</span>
+            <span id="badge-orden-llegada" class="text-[11px] font-extrabold px-1.5 py-0.2 rounded-full bg-amber-400 text-slate-900">0</span>
+          </button>
+          <button type="button" onclick="switchTab('pacientes')" id="nav-tab-pacientes" class="flex-1 sm:flex-initial px-3 py-2 rounded-lg text-xs sm:text-sm font-semibold text-clinical-100 hover:text-white transition flex items-center justify-center gap-1.5">
             <i class="fa-solid fa-id-card"></i>
             <span>Tarjetas</span>
             <span id="badge-total-pacientes" class="text-[11px] font-extrabold px-1.5 py-0.2 rounded-full bg-clinical-600 text-white">0</span>
           </button>
-          <button type="button" onclick="switchTab('historial')" id="nav-tab-historial" class="flex-1 sm:flex-initial px-3.5 py-2 rounded-lg text-xs sm:text-sm font-semibold text-clinical-100 hover:text-white transition flex items-center justify-center gap-1.5">
+          <button type="button" onclick="switchTab('sesiones')" id="nav-tab-sesiones" class="flex-1 sm:flex-initial px-3 py-2 rounded-lg text-xs sm:text-sm font-semibold text-clinical-100 hover:text-white transition flex items-center justify-center gap-1.5">
+            <i class="fa-solid fa-table-cells"></i>
+            <span>Libro de Sesiones</span>
+          </button>
+          <button type="button" onclick="switchTab('historial')" id="nav-tab-historial" class="flex-1 sm:flex-initial px-3 py-2 rounded-lg text-xs sm:text-sm font-semibold text-clinical-100 hover:text-white transition flex items-center justify-center gap-1.5">
             <i class="fa-solid fa-chart-line"></i>
             <span>Historial</span>
           </button>
@@ -562,83 +503,50 @@
   <!-- Notificación Toast Flotante -->
   <div id="toast-container" class="fixed bottom-5 right-5 z-50 flex flex-col gap-2 pointer-events-none"></div>
 
-  <!-- Pantalla de Acceso con Usuario y Clave Exclusiva del Equipo del SRI -->
+  <!-- Configuración de Firebase para despliegue externo (GitHub Pages) -->
+  <script>
+    window.SRI_FIREBASE_CONFIG = {
+      apiKey: 'AIzaSyCAdcExb81v1SJa-S3-44sbWLs-9BmyESs',
+      authDomain: 'sri-simon-bolivar.firebaseapp.com',
+      projectId: 'sri-simon-bolivar',
+      storageBucket: 'sri-simon-bolivar.firebasestorage.app',
+      messagingSenderId: '359350652215',
+      appId: '1:359350652215:web:295b0957922325f3e8deb2'
+    };
+  </script>
+
+  <!-- Pantalla de Acceso con Clave Única de la Sala -->
   <div id="auth-gate-overlay" class="fixed inset-0 bg-slate-900/80 backdrop-blur-sm z-40 hidden items-center justify-center p-4 overflow-y-auto">
     <div class="bg-white rounded-2xl shadow-2xl max-w-md w-full border border-slate-200 overflow-hidden my-auto">
       <div class="bg-gradient-to-r from-clinical-800 to-clinical-700 text-white px-6 py-5">
         <div class="flex items-center gap-3">
           <div class="w-11 h-11 rounded-xl bg-white/15 border border-white/25 flex items-center justify-center shrink-0">
-            <i class="fa-solid fa-shield-halved text-xl text-emerald-300"></i>
+            <i class="fa-solid fa-key text-xl text-emerald-300"></i>
           </div>
           <div>
-            <h2 class="text-lg font-extrabold tracking-tight">Acceso del Equipo · SRI Simón Bolívar</h2>
-            <p class="text-xs text-clinical-100">Secretaria, fisioterapeutas, jefatura y personal autorizado</p>
+            <h2 class="text-lg font-extrabold tracking-tight">Acceso de la Sala · SRI Simón Bolívar</h2>
+            <p class="text-xs text-clinical-100">Solo para el personal autorizado de rehabilitación</p>
           </div>
         </div>
       </div>
 
       <div class="p-6 space-y-4">
-        <div class="flex bg-slate-100 p-1 rounded-xl border border-slate-200">
-          <button type="button" id="auth-tab-login" onclick="toggleAuthMode('login')" class="flex-1 py-2 text-xs font-bold rounded-lg bg-white text-clinical-800 shadow-2xs transition">
-            Iniciar Sesión
-          </button>
-          <button type="button" id="auth-tab-register" onclick="toggleAuthMode('register')" class="flex-1 py-2 text-xs font-semibold rounded-lg text-slate-600 hover:text-slate-900 transition">
-            Crear Usuario de Sala
-          </button>
-        </div>
-
-        <form id="auth-team-form" onsubmit="handleTeamAuthSubmit(event)" class="space-y-3.5">
-          <input type="hidden" id="auth-mode" value="login" />
-
-          <div id="auth-register-fields" class="hidden space-y-3">
-            <div>
-              <label class="block text-xs font-bold text-slate-700 uppercase mb-1">Nombre del Trabajador</label>
-              <input type="text" id="auth-nombre" placeholder="Ej. Lic. Ana Pérez" class="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 text-sm focus:outline-none focus:ring-2 focus:ring-clinical-500" />
-            </div>
-            <div>
-              <label class="block text-xs font-bold text-slate-700 uppercase mb-1">Cargo / Rol en la Sala</label>
-              <select id="auth-rol" class="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-clinical-500">
-                <option value="Secretaria">Secretaria</option>
-                <option value="Fisioterapeuta">Fisioterapeuta</option>
-                <option value="Jefatura">Jefa / Coordinación</option>
-                <option value="Especialista">Podología / Foniatría / Ocupacional</option>
-              </select>
-            </div>
-          </div>
-
+        <form id="auth-room-form" onsubmit="handleSingleRoomPinSubmit(event)" class="space-y-3.5">
           <div>
-            <label class="block text-xs font-bold text-slate-700 uppercase mb-1">Usuario (Correo del Equipo) *</label>
-            <input type="email" id="auth-email" required placeholder="Ej. secretaria.sri@ejemplo.com" class="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 text-sm focus:outline-none focus:ring-2 focus:ring-clinical-500" />
-          </div>
-
-          <div>
-            <label class="block text-xs font-bold text-slate-700 uppercase mb-1">Contraseña / Clave *</label>
-            <input type="password" id="auth-password" required minlength="6" placeholder="Mínimo 6 caracteres" class="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 text-sm focus:outline-none focus:ring-2 focus:ring-clinical-500" />
+            <label class="block text-xs font-bold text-slate-700 uppercase mb-1">Clave de Acceso *</label>
+            <input type="password" id="auth-room-pin" required placeholder="Ingresa la clave de la sala" class="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 text-sm font-semibold focus:outline-none focus:ring-2 focus:ring-clinical-500" />
           </div>
 
           <div id="auth-error-msg" class="hidden text-xs font-semibold text-rose-700 bg-rose-50 border border-rose-200 rounded-xl px-3.5 py-2.5"></div>
 
-          <button type="submit" id="auth-submit-btn" class="w-full py-3 px-4 rounded-xl bg-clinical-600 hover:bg-clinical-700 text-white text-sm font-bold shadow-sm transition flex items-center justify-center gap-2">
-            <i class="fa-solid fa-right-to-bracket"></i>
-            <span>Entrar al Sistema del SRI</span>
+          <button type="submit" id="auth-pin-submit-btn" class="w-full py-3 px-4 rounded-xl bg-clinical-600 hover:bg-clinical-700 text-white text-sm font-bold shadow-sm transition flex items-center justify-center gap-2">
+            <i class="fa-solid fa-key"></i>
+            <span>Entrar a la Sala</span>
           </button>
         </form>
 
-        <!-- Respaldo cuando Correo/Contraseña no está habilitado aún en Firebase -->
-        <div id="auth-fallback-box" class="hidden pt-3 border-t border-slate-200 space-y-2.5">
-          <p class="text-xs font-bold text-amber-900 bg-amber-50 border border-amber-200 rounded-xl px-3 py-2">
-            Acceso rápido por Clave de Sala mientras activas Correo/Contraseña en Firebase:
-          </p>
-          <div class="flex gap-2">
-            <input type="password" id="auth-room-pin" placeholder="Clave de sala (SRI2026)" class="flex-1 px-3.5 py-2 rounded-xl border border-slate-300 text-sm focus:outline-none focus:ring-2 focus:ring-clinical-500" />
-            <button type="button" onclick="unlockWithRoomPin()" class="px-4 py-2 rounded-xl bg-slate-800 hover:bg-slate-900 text-white text-xs font-bold transition">
-              Entrar con Clave
-            </button>
-          </div>
-        </div>
-
         <p class="text-[11px] text-slate-500 leading-relaxed bg-slate-50 border border-slate-200/80 rounded-xl p-3">
-          Los pacientes, asistencias y consultas/reconsultas con fisiatra se sincronizan en tiempo real en la nube para los usuarios autorizados de la sala.
+          Ingresa la clave compartida del equipo para acceder al registro de pacientes, asistencias y estadísticas.
         </p>
       </div>
     </div>
@@ -704,7 +612,7 @@
         </div>
 
         <!-- Desglose por Modalidad / Tratamiento -->
-        <div class="bg-white rounded-2xl p-5 shadow-sm border border-slate-200 md:col-span-1 xl:col-span-2">
+        <div class="bg-white rounded-2xl p-5 shadow-sm border border-slate-200 md:col-span-1 xl:col-span-3">
           <div class="flex items-center justify-between mb-3">
             <span class="text-xs font-bold uppercase tracking-wider text-slate-500">Tratamientos Aplicados en el Día</span>
             <i class="fa-solid fa-notes-medical text-clinical-600"></i>
@@ -735,8 +643,8 @@
               <div id="stat-mod-mnt" class="text-2xl font-extrabold text-cyan-700">0</div>
             </div>
             <div class="bg-rose-50/80 border border-rose-100 rounded-xl p-3 text-center">
-              <div class="text-xs font-semibold text-rose-800 mb-1">Podología / Foniatría</div>
-              <div id="stat-mod-podo-fonia" class="text-xl font-extrabold text-rose-700">0 / 0</div>
+              <div class="text-xs font-semibold text-rose-800 mb-1">Podo / Fonia / Ozono</div>
+              <div id="stat-mod-podo-fonia" class="text-lg font-extrabold text-rose-700">0 / 0 / 0</div>
             </div>
             <div class="bg-emerald-50/80 border border-emerald-100 rounded-xl p-3 text-center">
               <div class="text-xs font-semibold text-emerald-800 mb-1">Fisiatra (Cons/Recons)</div>
@@ -744,7 +652,7 @@
             </div>
           </div>
 
-          <!-- Desglose Separado por Áreas: Fisioterapia, Terapia Ocupacional y Podología / Fisiatría / Foniatría -->
+          <!-- Desglose Separado por Áreas: Fisioterapia, Terapia Ocupacional y Podología / Foniatría / Ozonoterapia / Fisiatría -->
           <div class="mt-4 pt-3.5 border-t border-slate-200 grid grid-cols-1 md:grid-cols-3 gap-3">
             <div class="bg-sky-50/70 border border-sky-200/80 rounded-xl p-3">
               <div class="flex items-center justify-between mb-1">
@@ -766,11 +674,11 @@
 
             <div class="bg-rose-50/70 border border-rose-200/80 rounded-xl p-3">
               <div class="flex items-center justify-between mb-1">
-                <span class="text-[11px] font-extrabold uppercase tracking-wider text-rose-900">Podología, Fisiatría y Foniatría</span>
+                <span class="text-[11px] font-extrabold uppercase tracking-wider text-rose-900">Podología, Foniatría, Ozono y Fisiatría</span>
                 <span class="text-[10px] font-semibold text-rose-700">Especialidades</span>
               </div>
               <div id="stat-area-especialidades" class="text-lg font-extrabold text-rose-950">0 atenciones</div>
-              <div id="stat-area-especialidades-detalle" class="text-[11px] text-rose-800 mt-0.5">Podo: 0 · Fisiatría: 0 · Fonia: 0</div>
+              <div id="stat-area-especialidades-detalle" class="text-[11px] text-rose-800 mt-0.5">Podo: 0 · Fonia: 0 · Ozono: 0 · Fisiatría: 0</div>
             </div>
           </div>
         </div>
@@ -796,6 +704,25 @@
         </div>
       </div>
 
+      <!-- Renglón Aparte: Pacientes Programados por Día de la Semana (Lunes a Viernes) -->
+      <div class="bg-white rounded-2xl shadow-sm border border-slate-200 p-4 sm:p-5">
+        <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-2 mb-3.5">
+          <div>
+            <h3 class="text-sm font-extrabold uppercase tracking-wider text-slate-700 flex items-center gap-2">
+              <i class="fa-solid fa-calendar-week text-indigo-600"></i>
+              <span>Pacientes Asignados por Día (Lunes a Viernes) y Disponibilidad</span>
+            </h3>
+            <p class="text-xs text-slate-500 mt-0.5">Cuenta cuántos pacientes tienen programado venir cada día de la semana para detectar cupos libres o jornadas cargadas.</p>
+          </div>
+          <span id="stat-weekly-total-badge" class="text-xs font-bold px-3 py-1 rounded-lg bg-indigo-50 text-indigo-900 border border-indigo-200 self-start sm:self-auto">
+            Total programaciones: 0
+          </span>
+        </div>
+        <div id="stat-weekly-schedule-container" class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3 text-xs">
+          <!-- Renderizado dinámico por JS -->
+        </div>
+      </div>
+
       <!-- Barra de Herramientas: Buscador, Nuevo Paciente Rápido y Exportación -->
       <div class="bg-white rounded-2xl shadow-sm border border-slate-200 p-4 flex flex-col md:flex-row md:items-center justify-between gap-3">
         <!-- Buscador -->
@@ -812,6 +739,10 @@
           <button onclick="openPatientModal()" class="px-4 py-2.5 rounded-xl bg-clinical-600 hover:bg-clinical-700 text-white text-xs sm:text-sm font-semibold shadow-sm transition flex items-center gap-2">
             <i class="fa-solid fa-user-plus"></i>
             <span>Nuevo Paciente</span>
+          </button>
+          <button onclick="switchTab('llegada')" class="px-4 py-2.5 rounded-xl bg-amber-500 hover:bg-amber-600 text-slate-950 text-xs sm:text-sm font-bold shadow-sm transition flex items-center gap-2">
+            <i class="fa-solid fa-list-ol"></i>
+            <span>Ver Orden de Llegada</span>
           </button>
           <button onclick="copyWhatsAppReport()" class="px-4 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs sm:text-sm font-semibold shadow-sm transition flex items-center gap-2">
             <i class="fa-brands fa-whatsapp text-base"></i>
@@ -849,6 +780,90 @@
         </div>
       </div>
 
+    </section>
+
+    <!-- ===================================================================== -->
+    <!-- VISTA 1B: LISTA POR ORDEN DE LLEGADA (RENGLÓN APARTE PARA LLAMAR)     -->
+    <!-- ===================================================================== -->
+    <section id="view-llegada" class="hidden space-y-6">
+      <div class="bg-white rounded-2xl shadow-sm border border-slate-200 p-5 flex flex-col lg:flex-row lg:items-center justify-between gap-4">
+        <div>
+          <div class="flex items-center gap-2">
+            <span class="text-xs font-extrabold uppercase tracking-wider px-2.5 py-0.5 rounded-full bg-amber-100 text-amber-900 border border-amber-300">
+              Control de Llamado en Sala
+            </span>
+            <span id="llegada-fecha-badge" class="text-xs font-bold text-clinical-700 capitalize"></span>
+          </div>
+          <h2 class="text-xl sm:text-2xl font-extrabold text-slate-900 mt-1">
+            Lista de Pacientes por Orden de Llegada
+          </h2>
+          <p class="text-xs sm:text-sm text-slate-500 mt-0.5">
+            Cada paciente aparece <strong>uno debajo del otro en el orden exacto en que llegó</strong>, con sus tratamientos desplegados de forma horizontal para llamarlos rápidamente.
+          </p>
+        </div>
+
+        <div class="flex flex-wrap items-center gap-2">
+          <button onclick="switchTab('asistencia')" class="px-3.5 py-2.5 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 border border-slate-300 text-xs sm:text-sm font-semibold transition flex items-center gap-2">
+            <i class="fa-solid fa-arrow-left"></i>
+            <span>Volver a Asistencia</span>
+          </button>
+          <button onclick="copyArrivalOrderWhatsApp()" class="px-4 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs sm:text-sm font-semibold shadow-sm transition flex items-center gap-2">
+            <i class="fa-brands fa-whatsapp text-base"></i>
+            <span>Copiar Lista de Llegada</span>
+          </button>
+        </div>
+      </div>
+
+      <!-- Buscador / Anotar rápido en orden de llegada -->
+      <div class="bg-white rounded-2xl shadow-sm border border-slate-200 p-4 space-y-3">
+        <div class="flex flex-col md:flex-row md:items-center gap-3">
+          <div class="relative flex-1">
+            <i class="fa-solid fa-user-plus absolute left-3.5 top-1/2 -translate-y-1/2 text-amber-600"></i>
+            <input type="text" id="quick-arrival-search" oninput="renderQuickArrivalSuggestions()" placeholder="Anotar llegada rápida: escribe nombre, apellido, cédula o N° tarjeta..." class="w-full pl-10 pr-4 py-2.5 rounded-xl border border-slate-300 text-sm focus:outline-none focus:ring-2 focus:ring-amber-500" />
+          </div>
+          <label class="inline-flex items-center gap-2 text-xs font-semibold text-slate-700 cursor-pointer select-none px-3 py-2 rounded-xl bg-slate-50 border border-slate-200">
+            <input type="checkbox" id="filter-hide-called" onchange="renderArrivalQueueTable()" class="rounded text-amber-600 focus:ring-amber-500" />
+            <span>Ocultar ya llamados</span>
+          </label>
+        </div>
+        <div id="quick-arrival-suggestions" class="hidden flex-wrap gap-2 pt-1"></div>
+      </div>
+
+      <!-- Tabla Vertical (Orden de Llegada) x Horizontal (Tratamientos que lleva) -->
+      <div class="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden">
+        <div class="px-5 py-3.5 bg-amber-50/70 border-b border-amber-200/80 flex flex-wrap items-center justify-between gap-2">
+          <div class="flex items-center gap-2">
+            <i class="fa-solid fa-bullhorn text-amber-700"></i>
+            <h3 class="font-bold text-slate-900 text-sm sm:text-base">Cola de Atención (1° en llegar arriba)</h3>
+          </div>
+          <div id="llegada-resumen-contadores" class="flex flex-wrap items-center gap-2 text-xs font-bold">
+            <!-- Resumen pendientes / llamados -->
+          </div>
+        </div>
+
+        <div class="overflow-x-auto">
+          <table class="w-full text-left border-collapse">
+            <thead>
+              <tr class="bg-slate-800 text-white text-[11px] font-bold uppercase tracking-wider">
+                <th class="py-3 px-3 text-center w-14">Orden</th>
+                <th class="py-3 px-3 min-w-[200px]">Paciente (Orden de Llegada)</th>
+                <th class="py-3 px-2.5 text-center bg-blue-900/70">Corriente<br><span class="text-[9px] font-normal opacity-80">(Electro)</span></th>
+                <th class="py-3 px-2.5 text-center bg-indigo-900/70">Magneto</th>
+                <th class="py-3 px-2.5 text-center bg-amber-900/70">Termo</th>
+                <th class="py-3 px-2.5 text-center bg-teal-900/70">Gimnasio</th>
+                <th class="py-3 px-2.5 text-center bg-purple-900/70">Ter. Ocup.</th>
+                <th class="py-3 px-2.5 text-center bg-cyan-900/70">MNT</th>
+                <th class="py-3 px-2.5 text-center bg-rose-900/70">Podo / Fonia / Ozono</th>
+                <th class="py-3 px-3 text-center">Estado / Llamar</th>
+                <th class="py-3 px-3 text-right">Mover</th>
+              </tr>
+            </thead>
+            <tbody id="llegada-table-body" class="divide-y divide-slate-200 text-xs sm:text-sm">
+              <!-- Renderizado dinámico por JS -->
+            </tbody>
+          </table>
+        </div>
+      </div>
     </section>
 
     <!-- ===================================================================== -->
@@ -896,6 +911,72 @@
     </section>
 
     <!-- ===================================================================== -->
+    <!-- VISTA 2B: LIBRO DE SESIONES (45 CUADRÍCULAS CON FECHA POR SESIÓN)   -->
+    <!-- ===================================================================== -->
+    <section id="view-sesiones" class="hidden space-y-6">
+      <div class="bg-white rounded-2xl shadow-sm border border-slate-200 p-5 flex flex-col lg:flex-row lg:items-center justify-between gap-4">
+        <div>
+          <div class="flex items-center gap-2">
+            <span class="text-xs font-extrabold uppercase tracking-wider px-2.5 py-0.5 rounded-full bg-indigo-100 text-indigo-900 border border-indigo-300">
+              Control de Fechas por Sesión (1 al 45)
+            </span>
+          </div>
+          <h2 class="text-xl sm:text-2xl font-extrabold text-slate-900 mt-1">
+            Libro de Sesiones por Paciente (Ordenado por N° de Asistencia / Tarjeta)
+          </h2>
+          <p class="text-xs sm:text-sm text-slate-500 mt-0.5">
+            Listado vertical ordenado por el <strong>N° de asistencia/tarjeta</strong> y cuadrículas horizontales (<strong>Sesiones 1 a 45</strong>) con la <strong>fecha exacta</strong> en que asistió a cada sesión.
+          </p>
+        </div>
+
+        <div class="flex flex-wrap items-center gap-2">
+          <button onclick="switchTab('asistencia')" class="px-3.5 py-2.5 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 border border-slate-300 text-xs sm:text-sm font-semibold transition flex items-center gap-2">
+            <i class="fa-solid fa-arrow-left"></i>
+            <span>Volver a Asistencia</span>
+          </button>
+          <button onclick="exportSessionBookCSV()" class="px-4 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs sm:text-sm font-semibold shadow-sm transition flex items-center gap-2">
+            <i class="fa-solid fa-file-excel"></i>
+            <span>Exportar Libro (CSV)</span>
+          </button>
+        </div>
+      </div>
+
+      <!-- Buscador en Libro de Sesiones -->
+      <div class="bg-white rounded-2xl shadow-sm border border-slate-200 p-4">
+        <div class="relative">
+          <i class="fa-solid fa-magnifying-glass absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400"></i>
+          <input type="text" id="search-sesiones" oninput="renderSessionBookTable()" placeholder="Buscar en el libro por N° de tarjeta/asistencia, nombre, apellido o cédula..." class="w-full pl-10 pr-4 py-2.5 rounded-xl border border-slate-300 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500" />
+        </div>
+      </div>
+
+      <!-- Tabla Vertical (Pacientes por N° Tarjeta/Asistencia) x Horizontal (Sesiones 1 a 45) -->
+      <div class="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden">
+        <div class="px-5 py-3.5 bg-indigo-50/70 border-b border-indigo-200/80 flex flex-wrap items-center justify-between gap-2">
+          <div class="flex items-center gap-2">
+            <i class="fa-solid fa-book-open text-indigo-700"></i>
+            <h3 class="font-bold text-slate-900 text-sm sm:text-base">Cuadrícula de Sesiones (1 al 45) con Fecha Exacta</h3>
+          </div>
+          <span id="sesiones-count-badge" class="text-xs font-bold px-2.5 py-0.5 rounded-full bg-indigo-100 text-indigo-900 border border-indigo-200">
+            0 pacientes
+          </span>
+        </div>
+
+        <div class="overflow-x-auto">
+          <table class="w-full text-left border-collapse">
+            <thead>
+              <tr id="sesiones-table-head" class="bg-slate-800 text-white text-[11px] font-bold uppercase tracking-wider">
+                <!-- Renderizado dinámico por JS -->
+              </tr>
+            </thead>
+            <tbody id="sesiones-table-body" class="divide-y divide-slate-200 text-xs">
+              <!-- Renderizado dinámico por JS -->
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </section>
+
+    <!-- ===================================================================== -->
     <!-- VISTA 3: RESUMEN MULTI-DÍA / HISTORIAL ACUMULADO                      -->
     <!-- ===================================================================== -->
     <section id="view-historial" class="hidden space-y-6">
@@ -924,7 +1005,7 @@
                 <th class="py-3.5 px-4 text-center">Gimnasio</th>
                 <th class="py-3.5 px-4 text-center">Ter. Ocup.</th>
                 <th class="py-3.5 px-4 text-center">MNT</th>
-                <th class="py-3.5 px-4 text-center">Podo / Fonia</th>
+                <th class="py-3.5 px-4 text-center">Podo / Fonia / Ozono</th>
                 <th class="py-3.5 px-4 text-center">Fisiatra (C/R)</th>
                 <th class="py-3.5 px-4 text-center">Fisioterapia</th>
                 <th class="py-3.5 px-4 text-center">Edades M / F</th>
@@ -1003,6 +1084,33 @@
           </span>
         </div>
 
+        <!-- Días de la Semana Asignados (Lunes a Viernes) -->
+        <div>
+          <label class="block text-xs font-bold text-slate-700 uppercase mb-1.5">Días que le toca venir en la semana (Lunes a Viernes)</label>
+          <div class="grid grid-cols-5 gap-2">
+            <label class="flex flex-col items-center justify-center p-2.5 rounded-xl border border-slate-200 hover:bg-indigo-50/70 cursor-pointer transition select-none text-center">
+              <input type="checkbox" name="dia_semana" value="Lunes" class="w-4 h-4 rounded text-indigo-600 focus:ring-indigo-500 mb-1" />
+              <span class="text-xs font-bold text-slate-800">Lun</span>
+            </label>
+            <label class="flex flex-col items-center justify-center p-2.5 rounded-xl border border-slate-200 hover:bg-indigo-50/70 cursor-pointer transition select-none text-center">
+              <input type="checkbox" name="dia_semana" value="Martes" class="w-4 h-4 rounded text-indigo-600 focus:ring-indigo-500 mb-1" />
+              <span class="text-xs font-bold text-slate-800">Mar</span>
+            </label>
+            <label class="flex flex-col items-center justify-center p-2.5 rounded-xl border border-slate-200 hover:bg-indigo-50/70 cursor-pointer transition select-none text-center">
+              <input type="checkbox" name="dia_semana" value="Miércoles" class="w-4 h-4 rounded text-indigo-600 focus:ring-indigo-500 mb-1" />
+              <span class="text-xs font-bold text-slate-800">Mié</span>
+            </label>
+            <label class="flex flex-col items-center justify-center p-2.5 rounded-xl border border-slate-200 hover:bg-indigo-50/70 cursor-pointer transition select-none text-center">
+              <input type="checkbox" name="dia_semana" value="Jueves" class="w-4 h-4 rounded text-indigo-600 focus:ring-indigo-500 mb-1" />
+              <span class="text-xs font-bold text-slate-800">Jue</span>
+            </label>
+            <label class="flex flex-col items-center justify-center p-2.5 rounded-xl border border-slate-200 hover:bg-indigo-50/70 cursor-pointer transition select-none text-center">
+              <input type="checkbox" name="dia_semana" value="Viernes" class="w-4 h-4 rounded text-indigo-600 focus:ring-indigo-500 mb-1" />
+              <span class="text-xs font-bold text-slate-800">Vie</span>
+            </label>
+          </div>
+        </div>
+
         <!-- Modalidades / Tratamientos -->
         <div>
           <label class="block text-xs font-bold text-slate-700 uppercase mb-2">Modalidades / Tratamientos Indicados *</label>
@@ -1053,7 +1161,7 @@
           </div>
 
           <p class="text-[11px] font-bold uppercase tracking-wider text-emerald-700 mb-1.5">Otras Especialidades y Consulta Médica</p>
-          <div class="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+          <div class="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
             <label class="flex items-center gap-3 p-3 rounded-xl border border-slate-200 hover:bg-rose-50/50 cursor-pointer transition">
               <input type="checkbox" name="modalidad" value="Podología" class="w-4 h-4 rounded text-clinical-600 focus:ring-clinical-500" />
               <span class="text-sm font-medium text-slate-800">Podología</span>
@@ -1061,6 +1169,10 @@
             <label class="flex items-center gap-3 p-3 rounded-xl border border-slate-200 hover:bg-rose-50/50 cursor-pointer transition">
               <input type="checkbox" name="modalidad" value="Foniatría" class="w-4 h-4 rounded text-clinical-600 focus:ring-clinical-500" />
               <span class="text-sm font-medium text-slate-800">Foniatría</span>
+            </label>
+            <label class="flex items-center gap-3 p-3 rounded-xl border border-slate-200 hover:bg-rose-50/50 cursor-pointer transition">
+              <input type="checkbox" name="modalidad" value="Ozonoterapia" class="w-4 h-4 rounded text-clinical-600 focus:ring-clinical-500" />
+              <span class="text-sm font-medium text-slate-800">Ozonoterapia</span>
             </label>
           </div>
           <p class="text-[11px] text-emerald-800 bg-emerald-50 border border-emerald-200 rounded-xl px-3 py-2 mt-2.5">
@@ -1104,7 +1216,14 @@
         </div>
         <h3 id="confirm-title" class="text-lg font-bold text-slate-900">Confirmar acción</h3>
       </div>
-      <p id="confirm-message" class="text-sm text-slate-600 mb-6">¿Estás seguro de realizar esta acción?</p>
+      <p id="confirm-message" class="text-sm text-slate-600 mb-4">¿Estás seguro de realizar esta acción?</p>
+      <div id="confirm-pin-box" class="hidden mb-5">
+        <label class="block text-xs font-bold text-slate-700 uppercase mb-1.5">Contraseña de la sala para borrar todo *</label>
+        <input type="password" id="confirm-pin-input" placeholder="Ingresa la contraseña de la sala" class="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 text-sm font-semibold focus:outline-none focus:ring-2 focus:ring-rose-500" />
+        <label class="block text-xs font-bold text-slate-700 uppercase mt-3 mb-1.5">Código de sello del Lic. Gabriel Rojas *</label>
+        <input type="password" id="confirm-seal-input" inputmode="numeric" placeholder="Ingresa el código de sello" class="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 text-sm font-semibold focus:outline-none focus:ring-2 focus:ring-rose-500" />
+        <p id="confirm-pin-error" class="hidden text-xs font-semibold text-rose-600 mt-1.5"></p>
+      </div>
       <div class="flex justify-end gap-3">
         <button onclick="closeConfirmModal()" class="px-4 py-2 rounded-xl border border-slate-300 text-slate-700 text-sm font-semibold hover:bg-slate-50 transition">
           Cancelar
@@ -1123,7 +1242,9 @@
     const STORAGE_KEYS = {
       PATIENTS: 'sri_sb_patients_v1',
       ATTENDANCE: 'sri_sb_attendance_v1',
-      PHYSIATRIST: 'sri_sb_physiatrist_v1'
+      PHYSIATRIST: 'sri_sb_physiatrist_v1',
+      CALLED_QUEUE: 'sri_sb_called_queue_v1',
+      DISCHARGES: 'sri_sb_discharges_v1'
     };
 
     const AGE_GROUPS = [
@@ -1135,6 +1256,29 @@
       { id: '25_64', label: '25 a 64 años', min: 25, max: 64 },
       { id: '65_plus', label: '65 y más años', min: 65, max: 999 }
     ];
+
+    const WEEKDAYS_MON_FRI = [
+      { key: 'Lunes', short: 'Lunes', jsDay: 1 },
+      { key: 'Martes', short: 'Martes', jsDay: 2 },
+      { key: 'Miércoles', short: 'Miércoles', jsDay: 3 },
+      { key: 'Jueves', short: 'Jueves', jsDay: 4 },
+      { key: 'Viernes', short: 'Viernes', jsDay: 5 }
+    ];
+
+    function getWeekdayNameFromISO(isoStr) {
+      if (!isoStr || typeof isoStr !== 'string') return null;
+      const parts = isoStr.split('-').map(Number);
+      if (parts.length !== 3) return null;
+      const d = new Date(parts[0], parts[1] - 1, parts[2]);
+      const found = WEEKDAYS_MON_FRI.find(w => w.jsDay === d.getDay());
+      return found ? found.key : null;
+    }
+
+    function formatPatientDaysLabel(patient) {
+      const days = Array.isArray(patient?.diasSemana) ? patient.diasSemana : [];
+      if (days.length === 0) return 'Sin días asignados';
+      return days.join(', ');
+    }
 
     function getAgeGroup(age) {
       const n = Number(age);
@@ -1153,48 +1297,17 @@
       return Number.isInteger(val) ? String(val) : val.toFixed(1).replace('.', ',');
     }
 
-    let patients = [];
-    let attendanceMap = {};
-    let physiatristMap = {};
-    let selectedDateStr = getTodayISO();
-
-    function toggleAuthMode(mode) {
-      const modeInput = document.getElementById('auth-mode');
-      const regFields = document.getElementById('auth-register-fields');
-      const loginTab = document.getElementById('auth-tab-login');
-      const regTab = document.getElementById('auth-tab-register');
-      const submitBtn = document.getElementById('auth-submit-btn');
-
-      if (modeInput) modeInput.value = mode;
-      if (regFields) regFields.classList.toggle('hidden', mode !== 'register');
-
-      if (loginTab && regTab) {
-        if (mode === 'register') {
-          regTab.className = 'flex-1 py-2 text-xs font-bold rounded-lg bg-white text-clinical-800 shadow-2xs transition';
-          loginTab.className = 'flex-1 py-2 text-xs font-semibold rounded-lg text-slate-600 hover:text-slate-900 transition';
-        } else {
-          loginTab.className = 'flex-1 py-2 text-xs font-bold rounded-lg bg-white text-clinical-800 shadow-2xs transition';
-          regTab.className = 'flex-1 py-2 text-xs font-semibold rounded-lg text-slate-600 hover:text-slate-900 transition';
-        }
-      }
-
-      if (submitBtn) {
-        submitBtn.innerHTML = mode === 'register'
-          ? '<i class="fa-solid fa-user-plus"></i><span>Registrar Usuario de Sala</span>'
-          : '<i class="fa-solid fa-right-to-bracket"></i><span>Entrar al Sistema del SRI</span>';
-      }
-    }
-    window.toggleAuthMode = toggleAuthMode;
-
     function isPhysiatristDay(isoStr) {
-      if (!isoStr) return false;
-      const [y, m, d] = isoStr.split('-').map(Number);
-      const dayOfWeek = new Date(y, m - 1, d).getDay();
-      return dayOfWeek === 2 || dayOfWeek === 4;
+      if (!isoStr || typeof isoStr !== 'string') return false;
+      const parts = isoStr.split('-').map(Number);
+      if (parts.length !== 3) return false;
+      const d = new Date(parts[0], parts[1] - 1, parts[2]);
+      const day = d.getDay();
+      return day === 2 || day === 4;
     }
 
-    function getPhysiatristVisitType(isoStr, patientId) {
-      const dayMap = physiatristMap[isoStr];
+    function getPhysiatristVisitType(dateStr, patientId) {
+      const dayMap = physiatristMap[dateStr];
       if (!dayMap || typeof dayMap !== 'object') return null;
       const val = dayMap[patientId];
       return val === 'consulta' || val === 'reconsulta' ? val : null;
@@ -1208,13 +1321,17 @@
       const patient = patients.find(p => p.id === patientId);
       const fullName = patient ? `${patient.nombre} ${patient.apellido}` : 'Paciente';
 
-      if (current === visitType || !visitType) {
+      if (current === visitType) {
         delete physiatristMap[selectedDateStr][patientId];
-        showToast(`Registro de fisiatra retirado para ${fullName}.`, 'info');
+        showToast(`Marca de fisiatría retirada para ${fullName}.`, 'info');
       } else {
         physiatristMap[selectedDateStr][patientId] = visitType;
         const label = visitType === 'consulta' ? 'Consulta con Fisiatra' : 'Reconsulta con Fisiatra';
         showToast(`${label} marcada para ${fullName}.`, 'success');
+      }
+
+      if (Object.keys(physiatristMap[selectedDateStr]).length === 0) {
+        delete physiatristMap[selectedDateStr];
       }
 
       savePhysiatristToStorage();
@@ -1222,9 +1339,58 @@
     }
     window.setPhysiatristVisit = setPhysiatristVisit;
 
-    function escapeHtml(unsafe) {
-      if (unsafe === null || unsafe === undefined) return '';
-      return String(unsafe)
+    let patients = [];
+    let attendanceMap = {};
+    let physiatristMap = {};
+    let calledQueueMap = {};
+    let dischargesMap = {};
+    let selectedDateStr = getTodayISO();
+
+    function getDischargeInfo(patientId) {
+      if (!dischargesMap || typeof dischargesMap !== 'object') return null;
+      const entry = dischargesMap[patientId];
+      if (!entry || typeof entry !== 'object') return null;
+      const reason = entry.reason === 'inasistencia' ? 'inasistencia' : (entry.reason === 'alta_medica' ? 'alta_medica' : null);
+      if (!reason) return null;
+      return {
+        reason,
+        label: reason === 'alta_medica' ? 'Alta Médica (Doctora)' : 'Alta por Inasistencia',
+        shortLabel: reason === 'alta_medica' ? 'Alta Médica' : 'Inasistencia',
+        date: entry.date || getTodayISO()
+      };
+    }
+
+    function setPatientDischarge(patientId, reason) {
+      const patient = patients.find(p => p.id === patientId);
+      const fullName = patient ? `${patient.nombre} ${patient.apellido}` : 'Paciente';
+
+      if (!dischargesMap || typeof dischargesMap !== 'object') {
+        dischargesMap = {};
+      }
+
+      if (!reason) {
+        delete dischargesMap[patientId];
+        saveDischargesToStorage();
+        showToast(`Alta retirada para ${fullName}. Vuelve a estado activo.`, 'info');
+      } else {
+        dischargesMap[patientId] = {
+          reason,
+          date: selectedDateStr || getTodayISO()
+        };
+        saveDischargesToStorage();
+        const reasonText = reason === 'alta_medica' ? 'por alta médica (doctora)' : 'por inasistencia';
+        showToast(`${fullName} marcado como dado de alta ${reasonText}.`, 'success');
+      }
+
+      renderSessionBookTable();
+      renderPatientsCards();
+      renderAsistenciaList();
+    }
+    window.setPatientDischarge = setPatientDischarge;
+
+    function escapeHtml(str) {
+      if (str === null || str === undefined) return '';
+      return String(str)
         .replace(/&/g, '&amp;')
         .replace(/</g, '&lt;')
         .replace(/>/g, '&gt;')
@@ -1238,6 +1404,14 @@
       if (badge) {
         badge.textContent = patients.length;
       }
+    }
+
+    function updateArrivalOrderBadge() {
+      const badge = document.getElementById('badge-orden-llegada');
+      if (!badge) return;
+      const attendedIds = Array.isArray(attendanceMap[selectedDateStr]) ? attendanceMap[selectedDateStr] : [];
+      const activeCount = attendedIds.filter(id => patients.some(p => p.id === id)).length;
+      badge.textContent = activeCount;
     }
 
     function showToast(message, type = 'info') {
@@ -1266,7 +1440,6 @@
         setTimeout(() => toast.remove(), 300);
       }, 3200);
     }
-    window.showToast = showToast;
 
     function downloadFile(content, filename, mimeType) {
       const blob = new Blob([content], { type: mimeType });
@@ -1285,12 +1458,13 @@
         exportedAt: new Date().toISOString(),
         patients,
         attendanceMap,
-        physiatristMap
+        physiatristMap,
+        calledQueueMap,
+        dischargesMap
       };
       downloadFile(JSON.stringify(payload, null, 2), `Respaldo_SRI_${getTodayISO()}.json`, 'application/json');
       showToast('Respaldo JSON descargado correctamente.', 'success');
     }
-    window.exportBackupJSON = exportBackupJSON;
 
     function importBackupJSON(event) {
       const file = event.target.files[0];
@@ -1305,11 +1479,20 @@
             physiatristMap = typeof data.physiatristMap === 'object' && data.physiatristMap !== null
               ? data.physiatristMap
               : {};
+            calledQueueMap = typeof data.calledQueueMap === 'object' && data.calledQueueMap !== null
+              ? data.calledQueueMap
+              : {};
+            dischargesMap = typeof data.dischargesMap === 'object' && data.dischargesMap !== null
+              ? data.dischargesMap
+              : {};
             savePatientsToStorage();
             saveAttendanceToStorage();
             savePhysiatristToStorage();
+            saveCalledQueueToStorage();
+            saveDischargesToStorage();
             recalculateAndRenderAll();
             renderPatientsCards();
+            renderSessionBookTable();
             showToast('Respaldo restaurado con éxito.', 'success');
           } else {
             showToast('El archivo JSON no tiene un formato válido.', 'error');
@@ -1321,7 +1504,6 @@
       };
       reader.readAsText(file);
     }
-    window.importBackupJSON = importBackupJSON;
 
     document.addEventListener('DOMContentLoaded', () => {
       loadDataFromStorage();
@@ -1368,12 +1550,10 @@
       const target = addDaysToISO(getTodayISO(), offsetDays);
       setSelectedDate(target);
     }
-    window.setOffsetDate = setOffsetDate;
 
     function onDatePickerChange(val) {
       if (val) setSelectedDate(val);
     }
-    window.onDatePickerChange = onDatePickerChange;
 
     function setSelectedDate(isoStr) {
       selectedDateStr = isoStr;
@@ -1402,7 +1582,6 @@
 
       recalculateAndRenderAll();
     }
-    window.setSelectedDate = setSelectedDate;
 
     function getInitialDemoPatients() {
       return [
@@ -1453,7 +1632,7 @@
           cedula: '11.204.778',
           edad: 74,
           sexo: 'M',
-          modalidades: ['Electroterapia', 'Podología', 'Gimnasio'],
+          modalidades: ['Electroterapia', 'Podología', 'Ozonoterapia', 'Gimnasio'],
           modalidadesCantidad: { Electroterapia: 1 },
           sesionesMeta: 10,
           diagnostico: 'Neuropatía periférica y cuidado podológico'
@@ -1475,7 +1654,7 @@
     }
 
     function switchTab(tabName) {
-      const tabs = ['asistencia', 'pacientes', 'historial'];
+      const tabs = ['asistencia', 'llegada', 'pacientes', 'sesiones', 'historial'];
       tabs.forEach(name => {
         const viewEl = document.getElementById(`view-${name}`);
         const navBtn = document.getElementById(`nav-tab-${name}`);
@@ -1486,15 +1665,20 @@
         }
         if (navBtn) {
           navBtn.className = active
-            ? 'flex-1 sm:flex-initial px-3.5 py-2 rounded-lg text-xs sm:text-sm font-bold bg-white text-clinical-800 shadow-2xs transition flex items-center justify-center gap-1.5'
-            : 'flex-1 sm:flex-initial px-3.5 py-2 rounded-lg text-xs sm:text-sm font-semibold text-clinical-100 hover:text-white transition flex items-center justify-center gap-1.5';
+            ? 'flex-1 sm:flex-initial px-3 py-2 rounded-lg text-xs sm:text-sm font-bold bg-white text-clinical-800 shadow-2xs transition flex items-center justify-center gap-1.5'
+            : 'flex-1 sm:flex-initial px-3 py-2 rounded-lg text-xs sm:text-sm font-semibold text-clinical-100 hover:text-white transition flex items-center justify-center gap-1.5';
         }
       });
 
       if (tabName === 'asistencia') {
         recalculateAndRenderAll();
+      } else if (tabName === 'llegada') {
+        renderArrivalQueueTable();
+        renderQuickArrivalSuggestions();
       } else if (tabName === 'pacientes') {
         renderPatientsCards();
+      } else if (tabName === 'sesiones') {
+        renderSessionBookTable();
       } else if (tabName === 'historial') {
         renderHistorialTable();
       }
@@ -1527,11 +1711,27 @@
         } else {
           physiatristMap = {};
         }
+
+        const rawCalled = localStorage.getItem(STORAGE_KEYS.CALLED_QUEUE);
+        if (rawCalled) {
+          calledQueueMap = JSON.parse(rawCalled);
+        } else {
+          calledQueueMap = {};
+        }
+
+        const rawDischarges = localStorage.getItem(STORAGE_KEYS.DISCHARGES);
+        if (rawDischarges) {
+          dischargesMap = JSON.parse(rawDischarges);
+        } else {
+          dischargesMap = {};
+        }
       } catch (e) {
         console.error('Error cargando datos:', e);
         patients = [];
         attendanceMap = {};
         physiatristMap = {};
+        calledQueueMap = {};
+        dischargesMap = {};
       }
     }
 
@@ -1545,6 +1745,7 @@
 
     function saveAttendanceToStorage() {
       localStorage.setItem(STORAGE_KEYS.ATTENDANCE, JSON.stringify(attendanceMap));
+      updateArrivalOrderBadge();
       if (typeof window.syncCollectionToCloud === 'function') {
         window.syncCollectionToCloud('attendance', attendanceMap);
       }
@@ -1557,6 +1758,20 @@
       }
     }
 
+    function saveCalledQueueToStorage() {
+      localStorage.setItem(STORAGE_KEYS.CALLED_QUEUE, JSON.stringify(calledQueueMap));
+      if (typeof window.syncCollectionToCloud === 'function') {
+        window.syncCollectionToCloud('calledQueue', calledQueueMap);
+      }
+    }
+
+    function saveDischargesToStorage() {
+      localStorage.setItem(STORAGE_KEYS.DISCHARGES, JSON.stringify(dischargesMap));
+      if (typeof window.syncCollectionToCloud === 'function') {
+        window.syncCollectionToCloud('discharges', dischargesMap);
+      }
+    }
+
     window.applyRemoteState = function (collectionKey, remoteValue) {
       if (collectionKey === 'patients' && Array.isArray(remoteValue)) {
         patients = remoteValue;
@@ -1564,16 +1779,30 @@
         updateTotalPatientsBadge();
         recalculateAndRenderAll();
         renderPatientsCards();
+        renderArrivalQueueTable();
+        renderSessionBookTable();
       } else if (collectionKey === 'attendance' && remoteValue && typeof remoteValue === 'object') {
         attendanceMap = remoteValue;
         localStorage.setItem(STORAGE_KEYS.ATTENDANCE, JSON.stringify(attendanceMap));
         recalculateAndRenderAll();
         renderHistorialTable();
+        renderArrivalQueueTable();
+        renderSessionBookTable();
       } else if (collectionKey === 'physiatrist' && remoteValue && typeof remoteValue === 'object') {
         physiatristMap = remoteValue;
         localStorage.setItem(STORAGE_KEYS.PHYSIATRIST, JSON.stringify(physiatristMap));
         recalculateAndRenderAll();
         renderHistorialTable();
+      } else if (collectionKey === 'calledQueue' && remoteValue && typeof remoteValue === 'object') {
+        calledQueueMap = remoteValue;
+        localStorage.setItem(STORAGE_KEYS.CALLED_QUEUE, JSON.stringify(calledQueueMap));
+        renderArrivalQueueTable();
+      } else if (collectionKey === 'discharges' && remoteValue && typeof remoteValue === 'object') {
+        dischargesMap = remoteValue;
+        localStorage.setItem(STORAGE_KEYS.DISCHARGES, JSON.stringify(dischargesMap));
+        renderSessionBookTable();
+        renderPatientsCards();
+        renderAsistenciaList();
       }
     };
 
@@ -1631,6 +1860,7 @@
       let mntPatients = 0;
       let podologiaPatients = 0;
       let foniatriaPatients = 0;
+      let ozonoterapiaPatients = 0;
       let consultaFisiatraPatients = 0;
       let reconsultaFisiatraPatients = 0;
       let totalNonGymTreatments = 0;
@@ -1693,6 +1923,10 @@
           foniatriaPatients += 1;
           totalNonGymTreatments += 1;
         }
+        if (mods.includes('Ozonoterapia')) {
+          ozonoterapiaPatients += 1;
+          totalNonGymTreatments += 1;
+        }
 
         totalNonGymTreatments += qElectro + qMagneto + qTermo;
         gimnasioPatients += 1;
@@ -1711,7 +1945,7 @@
       const gimnasioTreatments = gimnasioPatients * 6.5;
       const fisioterapiaTotalTratamientos = electroTreatments + magnetoTreatments + termoTreatments + gimnasioTreatments;
       const fisiatríaTotal = consultaFisiatraPatients + reconsultaFisiatraPatients;
-      const especialidadesTotal = podologiaPatients + foniatriaPatients + fisiatríaTotal;
+      const especialidadesTotal = podologiaPatients + foniatriaPatients + ozonoterapiaPatients + fisiatríaTotal;
 
       return {
         totalPatients: attendedPatients.length,
@@ -1727,6 +1961,7 @@
         mntPatients,
         podologiaPatients,
         foniatriaPatients,
+        ozonoterapiaPatients,
         consultaFisiatraPatients,
         reconsultaFisiatraPatients,
         fisiatríaTotal,
@@ -1762,7 +1997,7 @@
       if (gymEl) gymEl.textContent = `${stats.gimnasioPatients} (${formatDecimal(stats.gimnasioTreatments)} tr.)`;
       if (ocupEl) ocupEl.textContent = stats.ocupacionalPatients;
       if (mntEl) mntEl.textContent = stats.mntPatients;
-      if (podoFoniaEl) podoFoniaEl.textContent = `${stats.podologiaPatients} / ${stats.foniatriaPatients}`;
+      if (podoFoniaEl) podoFoniaEl.textContent = `${stats.podologiaPatients} / ${stats.foniatriaPatients} / ${stats.ozonoterapiaPatients}`;
       if (fisiatraEl) {
         fisiatraEl.textContent = `${stats.consultaFisiatraPatients} / ${stats.reconsultaFisiatraPatients}${isPhysDay ? ' (M/J)' : ''}`;
       }
@@ -1786,7 +2021,7 @@
         espMainEl.textContent = `${stats.especialidadesTotal} ${stats.especialidadesTotal === 1 ? 'atención' : 'atenciones'}`;
       }
       if (espDetEl) {
-        espDetEl.textContent = `Podología: ${stats.podologiaPatients} · Fisiatría: ${stats.fisiatríaTotal} · Foniatría: ${stats.foniatriaPatients}`;
+        espDetEl.textContent = `Podología: ${stats.podologiaPatients} · Foniatría: ${stats.foniatriaPatients} · Ozono: ${stats.ozonoterapiaPatients} · Fisiatría: ${stats.fisiatríaTotal}`;
       }
 
       const ageContainer = document.getElementById('stat-age-brackets-container');
@@ -1851,9 +2086,84 @@
       if (femEl) femEl.textContent = stats.femCount;
       if (mascEl) mascEl.textContent = stats.mascCount;
 
+      renderWeeklyScheduleOverview();
+      updateArrivalOrderBadge();
       renderAsistenciaList();
+      renderArrivalQueueTable();
     }
     window.recalculateAndRenderAll = recalculateAndRenderAll;
+
+    function renderWeeklyScheduleOverview() {
+      const container = document.getElementById('stat-weekly-schedule-container');
+      const totalBadge = document.getElementById('stat-weekly-total-badge');
+      if (!container) return;
+
+      const selectedWeekday = getWeekdayNameFromISO(selectedDateStr);
+      const dayCounts = {};
+      let totalAssignedSlots = 0;
+
+      WEEKDAYS_MON_FRI.forEach(w => {
+        dayCounts[w.key] = 0;
+      });
+
+      patients.forEach(p => {
+        const assigned = Array.isArray(p?.diasSemana) ? p.diasSemana : [];
+        assigned.forEach(dKey => {
+          if (Object.prototype.hasOwnProperty.call(dayCounts, dKey)) {
+            dayCounts[dKey] += 1;
+            totalAssignedSlots += 1;
+          }
+        });
+      });
+
+      if (totalBadge) {
+        totalBadge.textContent = `Total programaciones (Lun–Vie): ${totalAssignedSlots}`;
+      }
+
+      const countsList = WEEKDAYS_MON_FRI.map(w => dayCounts[w.key]);
+      const minCount = Math.min(...countsList);
+      const maxCount = Math.max(...countsList);
+
+      container.innerHTML = WEEKDAYS_MON_FRI.map(w => {
+        const cnt = dayCounts[w.key] || 0;
+        const isCurrentDay = selectedWeekday === w.key;
+        const isLightest = totalAssignedSlots > 0 && cnt === minCount && minCount < maxCount;
+        const isHeaviest = totalAssignedSlots > 0 && cnt === maxCount && maxCount > minCount;
+
+        let loadBadgeText = 'Normal';
+        let loadBadgeClass = 'bg-slate-200/80 text-slate-700';
+        if (isLightest) {
+          loadBadgeText = 'Más cupo libre';
+          loadBadgeClass = 'bg-emerald-100 text-emerald-900 border border-emerald-300';
+        } else if (isHeaviest) {
+          loadBadgeText = 'Más cargado';
+          loadBadgeClass = 'bg-amber-100 text-amber-900 border border-amber-300';
+        }
+
+        return `
+          <div class="rounded-xl p-3.5 border transition flex flex-col justify-between gap-2 ${
+            isCurrentDay
+              ? 'bg-indigo-50/90 border-indigo-400 ring-2 ring-indigo-200/70'
+              : 'bg-slate-50 border-slate-200'
+          }">
+            <div class="flex items-center justify-between gap-1">
+              <span class="font-extrabold text-slate-900 text-xs sm:text-sm">${escapeHtml(w.short)}</span>
+              ${isCurrentDay ? '<span class="text-[10px] font-extrabold px-2 py-0.5 rounded-full bg-indigo-600 text-white">Día activo</span>' : ''}
+            </div>
+            <div class="flex items-baseline gap-1.5">
+              <span class="text-2xl sm:text-3xl font-extrabold text-indigo-900">${cnt}</span>
+              <span class="text-[11px] font-semibold text-slate-500">${cnt === 1 ? 'paciente' : 'pacientes'}</span>
+            </div>
+            <div>
+              <span class="inline-block text-[10px] font-bold px-2 py-0.5 rounded-md ${loadBadgeClass}">
+                ${escapeHtml(loadBadgeText)}
+              </span>
+            </div>
+          </div>
+        `;
+      }).join('');
+    }
+    window.renderWeeklyScheduleOverview = renderWeeklyScheduleOverview;
 
     function getCumulativeSessions(patientId) {
       let count = 0;
@@ -1865,35 +2175,512 @@
       return count;
     }
 
-    function toggleAttendance(patientId) {
+    function getPatientSessionDates(patientId) {
+      const dates = [];
+      Object.entries(attendanceMap).forEach(([dateKey, ids]) => {
+        if (Array.isArray(ids) && ids.includes(patientId)) {
+          dates.push(dateKey);
+        }
+      });
+      return dates.sort();
+    }
+
+    function formatShortSessionDate(isoStr) {
+      if (!isoStr || typeof isoStr !== 'string') return '';
+      const parts = isoStr.split('-');
+      if (parts.length !== 3) return isoStr;
+      const [y, m, d] = parts;
+      return `${d}/${m}/${y.slice(-2)}`;
+    }
+
+    function parseCardOrderNumber(patient) {
+      const raw = String(patient?.numeroTarjeta || '').trim();
+      if (!raw) return Number.MAX_SAFE_INTEGER;
+      const num = parseInt(raw.replace(/\D+/g, ''), 10);
+      return isNaN(num) ? Number.MAX_SAFE_INTEGER : num;
+    }
+
+    function getPatientsSortedByCardNumber() {
+      return [...patients].sort((a, b) => {
+        const numA = parseCardOrderNumber(a);
+        const numB = parseCardOrderNumber(b);
+        if (numA !== numB) return numA - numB;
+        const strA = String(a.numeroTarjeta || '').trim();
+        const strB = String(b.numeroTarjeta || '').trim();
+        if (strA && strB && strA !== strB) return strA.localeCompare(strB, 'es', { numeric: true });
+        return `${a.nombre || ''} ${a.apellido || ''}`.localeCompare(`${b.nombre || ''} ${b.apellido || ''}`, 'es');
+      });
+    }
+
+    function renderSessionBookTable() {
+      const thead = document.getElementById('sesiones-table-head');
+      const tbody = document.getElementById('sesiones-table-body');
+      const badge = document.getElementById('sesiones-count-badge');
+      const searchEl = document.getElementById('search-sesiones');
+      if (!thead || !tbody) return;
+
+      const totalSlots = 45;
+      const sessionHeaders = Array.from({ length: totalSlots }, (_, idx) => {
+        const sessionNum = idx + 1;
+        return `<th class="py-2.5 px-2 text-center min-w-[78px] border-l border-slate-700 whitespace-nowrap">Sesión ${sessionNum}</th>`;
+      }).join('');
+
+      thead.innerHTML = `
+        <th class="py-3 px-3 text-center min-w-[95px] sticky left-0 z-20 bg-slate-900 border-r border-slate-700">N° Asist.<br><span class="text-[9px] font-normal text-slate-300">(Tarjeta)</span></th>
+        <th class="py-3 px-3 min-w-[230px] sticky left-[95px] z-20 bg-slate-900 border-r border-slate-700">Paciente / Estado de Alta</th>
+        <th class="py-3 px-2.5 text-center min-w-[78px] bg-indigo-950 border-r border-slate-700">Total</th>
+        ${sessionHeaders}
+      `;
+
+      const query = searchEl ? searchEl.value.trim().toLowerCase() : '';
+      const sortedPatients = getPatientsSortedByCardNumber().filter(p => {
+        if (!query) return true;
+        const fullName = `${p.nombre || ''} ${p.apellido || ''}`.toLowerCase();
+        const cedula = String(p.cedula || '').toLowerCase();
+        const numTarjeta = String(p.numeroTarjeta || '').toLowerCase();
+        return fullName.includes(query) || cedula.includes(query) || numTarjeta.includes(query);
+      });
+
+      if (badge) {
+        badge.textContent = `${sortedPatients.length} ${sortedPatients.length === 1 ? 'paciente' : 'pacientes'}`;
+      }
+
+      if (sortedPatients.length === 0) {
+        tbody.innerHTML = `
+          <tr>
+            <td colspan="${totalSlots + 3}" class="py-10 px-4 text-center text-slate-500 text-sm">
+              No hay pacientes que coincidan con la búsqueda en el libro de sesiones.
+            </td>
+          </tr>
+        `;
+        return;
+      }
+
+      tbody.innerHTML = sortedPatients.map((p, idx) => {
+        const sessionDates = getPatientSessionDates(p.id);
+        const totalDone = sessionDates.length;
+        const cardNumDisplay = p.numeroTarjeta ? `N° ${p.numeroTarjeta}` : `#${idx + 1}`;
+        const dischargeInfo = getDischargeInfo(p.id);
+        const isDischarged = Boolean(dischargeInfo);
+
+        const cellsHtml = Array.from({ length: totalSlots }, (_, sIdx) => {
+          const isoDate = sessionDates[sIdx];
+          if (!isoDate) {
+            return `
+              <td class="py-2 px-1.5 text-center border-l ${isDischarged ? 'border-rose-200 bg-rose-100/60 text-rose-400' : 'border-slate-200/80 bg-slate-50/40 text-slate-300'}">
+                <span class="inline-block w-full py-1 rounded border border-dashed ${isDischarged ? 'border-rose-300' : 'border-slate-200'} text-[10px]">—</span>
+              </td>
+            `;
+          }
+          const shortLabel = formatShortSessionDate(isoDate);
+          return `
+            <td class="py-2 px-1.5 text-center border-l ${isDischarged ? 'border-rose-200 bg-rose-100/75' : 'border-slate-200/80 bg-emerald-50/50'}" title="Sesión ${sIdx + 1}: ${escapeHtml(isoDate)}">
+              <span class="inline-block w-full py-1 px-1 rounded-md font-bold text-[10px] whitespace-nowrap border ${
+                isDischarged
+                  ? 'bg-rose-600 text-white border-rose-700'
+                  : 'bg-emerald-100 text-emerald-900 border-emerald-300'
+              }">
+                ${escapeHtml(shortLabel)}
+              </span>
+            </td>
+          `;
+        }).join('');
+
+        const dischargeControlsHtml = `
+          <div class="mt-1.5 flex flex-wrap items-center gap-1">
+            <button type="button" onclick="setPatientDischarge('${escapeHtml(p.id)}', 'alta_medica')" class="px-2 py-0.5 rounded-md text-[10px] font-bold border transition ${
+              dischargeInfo?.reason === 'alta_medica'
+                ? 'bg-rose-600 text-white border-rose-700'
+                : 'bg-white hover:bg-rose-50 text-rose-700 border-rose-200'
+            }" title="Marcar dado de alta por la doctora">
+              Alta Médica
+            </button>
+            <button type="button" onclick="setPatientDischarge('${escapeHtml(p.id)}', 'inasistencia')" class="px-2 py-0.5 rounded-md text-[10px] font-bold border transition ${
+              dischargeInfo?.reason === 'inasistencia'
+                ? 'bg-rose-700 text-white border-rose-800'
+                : 'bg-white hover:bg-rose-50 text-rose-700 border-rose-200'
+            }" title="Marcar dado de alta por inasistencia / no venir más">
+              Inasistencia
+            </button>
+            ${isDischarged ? `
+              <button type="button" onclick="setPatientDischarge('${escapeHtml(p.id)}', null)" class="px-1.5 py-0.5 rounded-md text-[10px] font-bold bg-white hover:bg-slate-100 text-slate-600 border border-slate-300 transition" title="Quitar estado de alta">
+                <i class="fa-solid fa-rotate-left"></i>
+              </button>
+            ` : ''}
+          </div>
+        `;
+
+        return `
+          <tr class="${isDischarged ? 'bg-rose-100/80 hover:bg-rose-100 ring-1 ring-inset ring-rose-300' : 'hover:bg-indigo-50/30'} transition">
+            <td class="py-2.5 px-3 text-center font-extrabold sticky left-0 z-10 border-r whitespace-nowrap ${
+              isDischarged ? 'bg-rose-200/90 text-rose-950 border-rose-300' : 'bg-white text-indigo-950 border-slate-200'
+            }">
+              <span class="inline-block px-2 py-0.5 rounded-lg text-xs border ${
+                isDischarged ? 'bg-rose-600 text-white border-rose-700' : 'bg-indigo-100 border-indigo-200'
+              }">
+                ${escapeHtml(cardNumDisplay)}
+              </span>
+            </td>
+            <td class="py-2.5 px-3 sticky left-[95px] z-10 border-r ${
+              isDischarged ? 'bg-rose-100/95 border-rose-300' : 'bg-white border-slate-200'
+            }">
+              <div class="flex flex-wrap items-center gap-1.5">
+                <span class="font-bold truncate max-w-[165px] ${isDischarged ? 'text-rose-950 line-through decoration-rose-600' : 'text-slate-900'}" title="${escapeHtml(p.nombre)} ${escapeHtml(p.apellido)}">
+                  ${escapeHtml(p.nombre)} ${escapeHtml(p.apellido)}
+                </span>
+                ${isDischarged ? `
+                  <span class="text-[10px] font-extrabold px-2 py-0.5 rounded-full bg-rose-600 text-white uppercase tracking-wide">
+                    ${escapeHtml(dischargeInfo.shortLabel)}
+                  </span>
+                ` : ''}
+              </div>
+              <div class="text-[10px] ${isDischarged ? 'text-rose-800 font-semibold' : 'text-slate-500'}">
+                C.I. ${escapeHtml(p.cedula)}${isDischarged ? ` · Alta: ${escapeHtml(formatShortSessionDate(dischargeInfo.date))}` : ''}
+              </div>
+              ${dischargeControlsHtml}
+            </td>
+            <td class="py-2.5 px-2.5 text-center font-extrabold border-r whitespace-nowrap ${
+              isDischarged ? 'bg-rose-200/75 text-rose-950 border-rose-300' : 'bg-emerald-50/60 text-emerald-800 border-slate-200'
+            }">
+              ${totalDone} / 45
+            </td>
+            ${cellsHtml}
+          </tr>
+        `;
+      }).join('');
+    }
+    window.renderSessionBookTable = renderSessionBookTable;
+
+    function exportSessionBookCSV() {
+      const totalSlots = 45;
+      const sortedPatients = getPatientsSortedByCardNumber();
+      if (sortedPatients.length === 0) {
+        showToast('No hay pacientes para exportar en el libro de sesiones.', 'info');
+        return;
+      }
+
+      const sessionHeaders = Array.from({ length: totalSlots }, (_, i) => `Sesión ${i + 1}`);
+      const headers = ['N° Asistencia / Tarjeta', 'Nombre y Apellido', 'Cédula', 'Estado Alta', 'Motivo Alta', 'Total Sesiones', ...sessionHeaders];
+
+      const lines = [headers.join(';')];
+      sortedPatients.forEach((p, idx) => {
+        const sessionDates = getPatientSessionDates(p.id);
+        const cardLabel = p.numeroTarjeta ? p.numeroTarjeta : String(idx + 1);
+        const dischargeInfo = getDischargeInfo(p.id);
+        const rowSlots = Array.from({ length: totalSlots }, (_, sIdx) => sessionDates[sIdx] || '');
+        lines.push([
+          cardLabel,
+          `${p.nombre} ${p.apellido}`,
+          p.cedula,
+          dischargeInfo ? 'Dado de Alta' : 'Activo',
+          dischargeInfo ? dischargeInfo.label : '',
+          sessionDates.length,
+          ...rowSlots
+        ].join(';'));
+      });
+
+      downloadFile('\uFEFF' + lines.join('\n'), `Libro_Sesiones_1_a_45_${getTodayISO()}.csv`, 'text/csv;charset=utf-8;');
+      showToast('Libro de sesiones (1 al 45) descargado en CSV.', 'success');
+    }
+    window.exportSessionBookCSV = exportSessionBookCSV;
+
+    function toggleAttendance(patientId, forceAttended = null) {
       if (!Array.isArray(attendanceMap[selectedDateStr])) {
         attendanceMap[selectedDateStr] = [];
       }
-
+      const list = attendanceMap[selectedDateStr];
+      const idx = list.indexOf(patientId);
       const patient = patients.find(p => p.id === patientId);
       const fullName = patient ? `${patient.nombre} ${patient.apellido}` : 'Paciente';
-      const idx = attendanceMap[selectedDateStr].indexOf(patientId);
 
-      if (idx >= 0) {
-        attendanceMap[selectedDateStr].splice(idx, 1);
-        saveAttendanceToStorage();
-        showToast(`Asistencia retirada para ${fullName}.`, 'info');
-      } else {
-        attendanceMap[selectedDateStr].push(patientId);
-        saveAttendanceToStorage();
-        const totalAcum = getCumulativeSessions(patientId);
-        const meta = patient && patient.sesionesMeta ? Number(patient.sesionesMeta) : 10;
+      const shouldAttend = typeof forceAttended === 'boolean' ? forceAttended : idx < 0;
 
-        if (totalAcum >= meta) {
-          showToast(`¡AVISO DE RECONSULTA! ${fullName} completó sus ${totalAcum}/${meta} sesiones. Pasar a Fisiatra.`, 'error');
-        } else {
-          showToast(`Asistencia marcada para ${fullName} (${totalAcum}/${meta}).`, 'success');
+      if (shouldAttend && idx < 0) {
+        list.push(patientId);
+        showToast(`Asistencia marcada (#${list.length} en llegada): ${fullName}.`, 'success');
+      } else if (!shouldAttend && idx >= 0) {
+        list.splice(idx, 1);
+        if (calledQueueMap[selectedDateStr] && typeof calledQueueMap[selectedDateStr] === 'object') {
+          delete calledQueueMap[selectedDateStr][patientId];
+          saveCalledQueueToStorage();
         }
+        showToast(`Asistencia retirada para ${fullName}.`, 'info');
       }
 
+      saveAttendanceToStorage();
       recalculateAndRenderAll();
     }
     window.toggleAttendance = toggleAttendance;
+
+    function renderQuickArrivalSuggestions() {
+      const inputEl = document.getElementById('quick-arrival-search');
+      const boxEl = document.getElementById('quick-arrival-suggestions');
+      if (!inputEl || !boxEl) return;
+
+      const query = inputEl.value.trim().toLowerCase();
+      if (!query) {
+        boxEl.classList.add('hidden');
+        boxEl.innerHTML = '';
+        return;
+      }
+
+      const attendedIds = Array.isArray(attendanceMap[selectedDateStr]) ? attendanceMap[selectedDateStr] : [];
+      const matches = patients.filter(p => {
+        const fullName = `${p.nombre || ''} ${p.apellido || ''}`.toLowerCase();
+        const cedula = String(p.cedula || '').toLowerCase();
+        const numTarjeta = String(p.numeroTarjeta || '').toLowerCase();
+        return fullName.includes(query) || cedula.includes(query) || numTarjeta.includes(query);
+      }).slice(0, 8);
+
+      boxEl.classList.remove('hidden');
+      boxEl.classList.add('flex');
+
+      if (matches.length === 0) {
+        boxEl.innerHTML = `<span class="text-xs text-slate-500">Sin coincidencias para "${escapeHtml(query)}".</span>`;
+        return;
+      }
+
+      boxEl.innerHTML = matches.map(p => {
+        const pos = attendedIds.indexOf(p.id);
+        const alreadyIn = pos >= 0;
+        return `
+          <button type="button" onclick="quickAddArrivalPatient('${escapeHtml(p.id)}')" class="px-3 py-1.5 rounded-xl border text-xs font-bold transition flex items-center gap-2 ${
+            alreadyIn
+              ? 'bg-emerald-50 border-emerald-300 text-emerald-900'
+              : 'bg-amber-50 hover:bg-amber-100 border-amber-300 text-amber-950'
+          }">
+            <i class="fa-solid ${alreadyIn ? 'fa-check text-emerald-600' : 'fa-plus text-amber-700'}"></i>
+            <span>${escapeHtml(p.nombre)} ${escapeHtml(p.apellido)}</span>
+            <span class="text-[10px] opacity-75">(${alreadyIn ? `Turno #${pos + 1}` : `C.I. ${escapeHtml(p.cedula)}`})</span>
+          </button>
+        `;
+      }).join('');
+    }
+    window.renderQuickArrivalSuggestions = renderQuickArrivalSuggestions;
+
+    function quickAddArrivalPatient(patientId) {
+      toggleAttendance(patientId, true);
+      const inputEl = document.getElementById('quick-arrival-search');
+      if (inputEl) {
+        inputEl.value = '';
+      }
+      renderQuickArrivalSuggestions();
+    }
+    window.quickAddArrivalPatient = quickAddArrivalPatient;
+
+    function togglePatientCalledStatus(patientId) {
+      if (!calledQueueMap[selectedDateStr] || typeof calledQueueMap[selectedDateStr] !== 'object') {
+        calledQueueMap[selectedDateStr] = {};
+      }
+      calledQueueMap[selectedDateStr][patientId] = !calledQueueMap[selectedDateStr][patientId];
+      saveCalledQueueToStorage();
+      renderArrivalQueueTable();
+    }
+    window.togglePatientCalledStatus = togglePatientCalledStatus;
+
+    function movePatientInArrivalQueue(patientId, direction) {
+      const list = Array.isArray(attendanceMap[selectedDateStr]) ? attendanceMap[selectedDateStr] : [];
+      const currentIdx = list.indexOf(patientId);
+      if (currentIdx < 0) return;
+      const targetIdx = currentIdx + direction;
+      if (targetIdx < 0 || targetIdx >= list.length) return;
+
+      const updated = [...list];
+      const [moved] = updated.splice(currentIdx, 1);
+      updated.splice(targetIdx, 0, moved);
+      attendanceMap[selectedDateStr] = updated;
+      saveAttendanceToStorage();
+      recalculateAndRenderAll();
+    }
+    window.movePatientInArrivalQueue = movePatientInArrivalQueue;
+
+    function renderArrivalQueueTable() {
+      const tbody = document.getElementById('llegada-table-body');
+      const fechaBadge = document.getElementById('llegada-fecha-badge');
+      const summaryBox = document.getElementById('llegada-resumen-contadores');
+      const hideCalledEl = document.getElementById('filter-hide-called');
+      if (!tbody) return;
+
+      if (fechaBadge) {
+        fechaBadge.textContent = `${formatSpanishDate(selectedDateStr)}${getRelativeLabel(selectedDateStr)}`;
+      }
+
+      const hideCalled = hideCalledEl ? hideCalledEl.checked : false;
+      const attendedIds = Array.isArray(attendanceMap[selectedDateStr]) ? attendanceMap[selectedDateStr] : [];
+      const dayCalledMap = calledQueueMap[selectedDateStr] && typeof calledQueueMap[selectedDateStr] === 'object'
+        ? calledQueueMap[selectedDateStr]
+        : {};
+
+      const orderedList = attendedIds
+        .map(id => patients.find(p => p.id === id))
+        .filter(Boolean);
+
+      const totalCount = orderedList.length;
+      const calledCount = orderedList.filter(p => Boolean(dayCalledMap[p.id])).length;
+      const pendingCount = totalCount - calledCount;
+
+      if (summaryBox) {
+        summaryBox.innerHTML = `
+          <span class="px-2.5 py-1 rounded-lg bg-amber-100 text-amber-900 border border-amber-300">Por llamar: ${pendingCount}</span>
+          <span class="px-2.5 py-1 rounded-lg bg-emerald-100 text-emerald-900 border border-emerald-300">Llamados: ${calledCount}</span>
+          <span class="px-2.5 py-1 rounded-lg bg-slate-100 text-slate-800 border border-slate-300">Total: ${totalCount}</span>
+        `;
+      }
+
+      if (orderedList.length === 0) {
+        tbody.innerHTML = `
+          <tr>
+            <td colspan="11" class="py-10 px-4 text-center text-slate-500 text-sm">
+              Aún no hay pacientes anotados en orden de llegada para esta jornada. Búscalos arriba o márcalos en <strong>Asistencia</strong>.
+            </td>
+          </tr>
+        `;
+        return;
+      }
+
+      const rowsHtml = orderedList.map((p, index) => {
+        const isCalled = Boolean(dayCalledMap[p.id]);
+        if (hideCalled && isCalled) return '';
+
+        const mods = Array.isArray(p.modalidades) ? p.modalidades : [];
+        const qElectro = getPatientModalityQty(p, 'Electroterapia');
+        const qMagneto = getPatientModalityQty(p, 'Magnetoterapia');
+        const qTermo = getPatientModalityQty(p, 'Termoterapia');
+        const hasGym = mods.includes('Gimnasio');
+        const hasOcup = mods.includes('Terapia Ocupacional');
+        const hasMnt = mods.includes('MNT');
+        const hasPodo = mods.includes('Podología');
+        const hasFonia = mods.includes('Foniatría');
+        const hasOzono = mods.includes('Ozonoterapia');
+
+        const espTags = [
+          hasPodo ? 'Podo' : null,
+          hasFonia ? 'Fonia' : null,
+          hasOzono ? 'Ozono' : null
+        ].filter(Boolean);
+
+        const renderCheckCell = (active, label, colorClasses) => {
+          if (!active) {
+            return `<td class="py-3 px-2.5 text-center text-slate-300">—</td>`;
+          }
+          return `
+            <td class="py-3 px-2.5 text-center">
+              <span class="inline-flex items-center justify-center px-2 py-0.5 rounded-md text-[11px] font-extrabold border ${colorClasses}">
+                ${escapeHtml(label)}
+              </span>
+            </td>
+          `;
+        };
+
+        return `
+          <tr class="${isCalled ? 'bg-emerald-50/40 text-slate-500' : 'bg-white hover:bg-amber-50/40'} transition">
+            <td class="py-3 px-3 text-center">
+              <span class="inline-flex items-center justify-center w-8 h-8 rounded-xl font-extrabold text-sm ${
+                isCalled ? 'bg-emerald-600 text-white' : 'bg-amber-500 text-slate-950 shadow-2xs'
+              }">
+                ${index + 1}
+              </span>
+            </td>
+            <td class="py-3 px-3">
+              <div class="font-bold ${isCalled ? 'line-through text-slate-500' : 'text-slate-900'}">
+                ${escapeHtml(p.nombre)} ${escapeHtml(p.apellido)}
+              </div>
+              <div class="text-[11px] text-slate-500 flex flex-wrap items-center gap-1.5 mt-0.5">
+                ${p.numeroTarjeta ? `<span class="font-bold text-slate-700">N° ${escapeHtml(p.numeroTarjeta)}</span> ·` : ''}
+                <span>C.I. ${escapeHtml(p.cedula)}</span>
+              </div>
+            </td>
+            ${renderCheckCell(qElectro > 0, qElectro > 1 ? `Sí (×${qElectro})` : 'Sí', 'bg-blue-100 text-blue-900 border-blue-200')}
+            ${renderCheckCell(qMagneto > 0, qMagneto > 1 ? `Sí (×${qMagneto})` : 'Sí', 'bg-indigo-100 text-indigo-900 border-indigo-200')}
+            ${renderCheckCell(qTermo > 0, qTermo > 1 ? `Sí (×${qTermo})` : 'Sí', 'bg-amber-100 text-amber-900 border-amber-200')}
+            ${renderCheckCell(hasGym, 'Sí', 'bg-teal-100 text-teal-900 border-teal-200')}
+            ${renderCheckCell(hasOcup, 'Sí', 'bg-purple-100 text-purple-900 border-purple-200')}
+            ${renderCheckCell(hasMnt, 'Sí', 'bg-cyan-100 text-cyan-900 border-cyan-200')}
+            <td class="py-3 px-2.5 text-center">
+              ${espTags.length > 0
+                ? `<span class="inline-flex items-center justify-center px-2 py-0.5 rounded-md text-[11px] font-extrabold bg-rose-100 text-rose-900 border border-rose-200">${escapeHtml(espTags.join(' / '))}</span>`
+                : '<span class="text-slate-300">—</span>'}
+            </td>
+            <td class="py-3 px-3 text-center">
+              <button type="button" onclick="togglePatientCalledStatus('${escapeHtml(p.id)}')" class="px-3 py-1.5 rounded-xl text-xs font-bold transition inline-flex items-center gap-1.5 ${
+                isCalled
+                  ? 'bg-emerald-600 hover:bg-emerald-700 text-white'
+                  : 'bg-amber-500 hover:bg-amber-600 text-slate-950 shadow-2xs'
+              }">
+                <i class="fa-solid ${isCalled ? 'fa-check-double' : 'fa-bullhorn'}"></i>
+                <span>${isCalled ? 'Llamado' : 'Llamar'}</span>
+              </button>
+            </td>
+            <td class="py-3 px-3 text-right whitespace-nowrap">
+              <div class="inline-flex items-center gap-1">
+                <button type="button" onclick="movePatientInArrivalQueue('${escapeHtml(p.id)}', -1)" ${index === 0 ? 'disabled' : ''} class="p-1.5 rounded-lg border border-slate-200 hover:bg-slate-100 text-slate-600 disabled:opacity-30 transition" title="Subir turno">
+                  <i class="fa-solid fa-arrow-up text-xs"></i>
+                </button>
+                <button type="button" onclick="movePatientInArrivalQueue('${escapeHtml(p.id)}', 1)" ${index === orderedList.length - 1 ? 'disabled' : ''} class="p-1.5 rounded-lg border border-slate-200 hover:bg-slate-100 text-slate-600 disabled:opacity-30 transition" title="Bajar turno">
+                  <i class="fa-solid fa-arrow-down text-xs"></i>
+                </button>
+              </div>
+            </td>
+          </tr>
+        `;
+      }).filter(Boolean).join('');
+
+      tbody.innerHTML = rowsHtml || `
+        <tr>
+          <td colspan="11" class="py-8 px-4 text-center text-slate-500 text-sm">
+            Todos los pacientes anotados en esta jornada ya fueron llamados.
+          </td>
+        </tr>
+      `;
+    }
+    window.renderArrivalQueueTable = renderArrivalQueueTable;
+
+    function copyArrivalOrderWhatsApp() {
+      const attendedIds = Array.isArray(attendanceMap[selectedDateStr]) ? attendanceMap[selectedDateStr] : [];
+      const orderedList = attendedIds
+        .map(id => patients.find(p => p.id === id))
+        .filter(Boolean);
+
+      if (orderedList.length === 0) {
+        showToast('No hay pacientes en orden de llegada para copiar.', 'info');
+        return;
+      }
+
+      const dayCalledMap = calledQueueMap[selectedDateStr] && typeof calledQueueMap[selectedDateStr] === 'object'
+        ? calledQueueMap[selectedDateStr]
+        : {};
+
+      const lines = orderedList.map((p, idx) => {
+        const statusIcon = dayCalledMap[p.id] ? '✅' : '⏳';
+        const modsLabel = formatPatientModalidadesLabel(p);
+        return `${idx + 1}. ${statusIcon} *${p.nombre} ${p.apellido}* — ${modsLabel}`;
+      });
+
+      const text = [
+        `*ORDEN DE LLEGADA - SRI SIMÓN BOLÍVAR*`,
+        `📅 Fecha: ${formatSpanishDate(selectedDateStr)} (${selectedDateStr})`,
+        ``,
+        ...lines
+      ].join('\n');
+
+      const tempTextarea = document.createElement('textarea');
+      tempTextarea.value = text;
+      tempTextarea.setAttribute('readonly', '');
+      tempTextarea.style.position = 'absolute';
+      tempTextarea.style.left = '-9999px';
+      document.body.appendChild(tempTextarea);
+      tempTextarea.select();
+
+      try {
+        document.execCommand('copy');
+        showToast('Lista de orden de llegada copiada para WhatsApp.', 'success');
+      } catch (err) {
+        showToast('No se pudo copiar la lista automáticamente.', 'error');
+      } finally {
+        document.body.removeChild(tempTextarea);
+      }
+    }
+    window.copyArrivalOrderWhatsApp = copyArrivalOrderWhatsApp;
 
     function clearAsistenciaSearch() {
       const searchEl = document.getElementById('search-asistencia');
@@ -1947,7 +2734,8 @@
       }
 
       container.innerHTML = filtered.map(p => {
-        const isAttended = attendedIds.includes(p.id);
+        const arrivalPos = attendedIds.indexOf(p.id);
+        const isAttended = arrivalPos >= 0;
         const ageGroup = getAgeGroup(p.edad);
         const cumSessions = getCumulativeSessions(p.id);
         const metaSessions = p.sesionesMeta ? Number(p.sesionesMeta) : 10;
@@ -1955,13 +2743,17 @@
         const physVisit = getPhysiatristVisitType(selectedDateStr, p.id);
         const isPhysDay = isPhysiatristDay(selectedDateStr);
         const mods = formatPatientModalidadesLabel(p);
+        const daysLabel = formatPatientDaysLabel(p);
+        const dischargeInfo = getDischargeInfo(p.id);
 
         return `
-          <div class="p-4 sm:px-5 flex flex-col lg:flex-row lg:items-center justify-between gap-3 hover:bg-slate-50/80 transition ${needsReconsulta ? 'bg-amber-50/50 border-l-4 border-l-amber-500' : (isPhysDay ? 'bg-emerald-50/20' : '')}">
+          <div class="p-4 sm:px-5 flex flex-col lg:flex-row lg:items-center justify-between gap-3 hover:bg-slate-50/80 transition ${dischargeInfo ? 'bg-rose-50/50 border-l-4 border-l-rose-500' : (needsReconsulta ? 'bg-amber-50/50 border-l-4 border-l-amber-500' : (isPhysDay ? 'bg-emerald-50/20' : ''))}">
             <div class="space-y-1">
               <div class="flex flex-wrap items-center gap-2">
+                ${isAttended ? `<span class="text-xs font-extrabold px-2 py-0.5 rounded-md bg-amber-500 text-slate-950" title="Orden de llegada">#${arrivalPos + 1}</span>` : ''}
                 ${p.numeroTarjeta ? `<span class="text-xs font-extrabold px-2 py-0.5 rounded-md bg-slate-800 text-white">N° ${escapeHtml(p.numeroTarjeta)}</span>` : ''}
                 <span class="font-bold text-slate-900 text-sm sm:text-base">${escapeHtml(p.nombre)} ${escapeHtml(p.apellido)}</span>
+                ${dischargeInfo ? `<span class="text-xs font-extrabold px-2.5 py-0.5 rounded-full bg-rose-600 text-white">${escapeHtml(dischargeInfo.shortLabel)}</span>` : ''}
                 <span class="text-xs font-semibold px-2 py-0.5 rounded-full bg-slate-100 text-slate-700">C.I. ${escapeHtml(p.cedula)}</span>
                 <span class="text-xs font-semibold px-2 py-0.5 rounded-full bg-clinical-50 text-clinical-700 border border-clinical-200">${escapeHtml(String(p.edad))} años · ${escapeHtml(ageGroup.label)}</span>
                 <span class="text-xs font-bold px-2 py-0.5 rounded-full ${p.sexo === 'F' ? 'bg-pink-100 text-pink-800' : 'bg-sky-100 text-sky-800'}">${escapeHtml(p.sexo)}</span>
@@ -1970,6 +2762,7 @@
                 ${physVisit === 'reconsulta' ? '<span class="text-xs font-bold px-2 py-0.5 rounded-full bg-amber-100 text-amber-800 border border-amber-200">Reconsulta Fisiatra</span>' : ''}
               </div>
               <div class="text-xs text-slate-600 flex flex-wrap items-center gap-x-3 gap-y-1">
+                <span><strong>Días:</strong> ${escapeHtml(daysLabel)}</span>
                 <span><strong>Modalidades:</strong> ${escapeHtml(mods)}</span>
                 <span><strong>Asistencias acumuladas:</strong> ${cumSessions} / ${metaSessions}</span>
                 ${p.diagnostico ? `<span><strong>Dx:</strong> ${escapeHtml(p.diagnostico)}</span>` : ''}
@@ -2001,7 +2794,7 @@
                   : 'bg-white hover:bg-clinical-50 text-clinical-700 border border-clinical-300'
               }">
                 <i class="fa-solid ${isAttended ? 'fa-check-circle' : 'fa-calendar-plus'}"></i>
-                <span>${isAttended ? 'Asistió' : 'Marcar Asistencia'}</span>
+                <span>${isAttended ? `Asistió (#${arrivalPos + 1})` : 'Marcar Asistencia'}</span>
               </button>
               <button onclick="openPatientModal('${escapeHtml(p.id)}')" class="p-2.5 rounded-xl border border-slate-200 hover:bg-slate-100 text-slate-600 transition" title="Editar tarjeta">
                 <i class="fa-solid fa-pen"></i>
@@ -2044,9 +2837,10 @@
         const metaSessions = p.sesionesMeta ? Number(p.sesionesMeta) : 10;
         const needsReconsulta = cumSessions >= metaSessions;
         const mods = Array.isArray(p.modalidades) ? p.modalidades : [];
+        const dischargeInfo = getDischargeInfo(p.id);
 
         return `
-          <article class="bg-white rounded-2xl border ${needsReconsulta ? 'border-amber-400 ring-2 ring-amber-200/60' : 'border-slate-200'} shadow-sm hover:shadow-md transition flex flex-col justify-between overflow-hidden">
+          <article class="bg-white rounded-2xl border ${dischargeInfo ? 'border-rose-400 ring-2 ring-rose-200/70' : (needsReconsulta ? 'border-amber-400 ring-2 ring-amber-200/60' : 'border-slate-200')} shadow-sm hover:shadow-md transition flex flex-col justify-between overflow-hidden">
             <div class="p-5 pb-4 space-y-3">
               <div class="flex items-start justify-between gap-3">
                 <div class="min-w-0">
@@ -2055,6 +2849,7 @@
                     <span class="text-[11px] font-bold px-2 py-0.5 rounded-md ${p.sexo === 'F' ? 'bg-pink-100 text-pink-800' : 'bg-sky-100 text-sky-800'}">
                       ${p.sexo === 'F' ? 'Femenino' : 'Masculino'}
                     </span>
+                    ${dischargeInfo ? `<span class="text-[11px] font-extrabold px-2 py-0.5 rounded-md bg-rose-600 text-white">${escapeHtml(dischargeInfo.shortLabel)}</span>` : ''}
                   </div>
                   <h3 class="font-bold text-slate-900 text-base leading-snug truncate" title="${escapeHtml(p.nombre)} ${escapeHtml(p.apellido)}">
                     ${escapeHtml(p.nombre)} ${escapeHtml(p.apellido)}
@@ -2062,6 +2857,13 @@
                   <p class="text-xs text-slate-500 font-medium mt-0.5">C.I.: ${escapeHtml(p.cedula)}</p>
                 </div>
               </div>
+
+              ${dischargeInfo ? `
+                <div class="bg-rose-50 border border-rose-300 text-rose-900 px-3 py-2 rounded-xl text-xs font-bold flex items-center gap-2">
+                  <i class="fa-solid fa-circle-xmark text-rose-600 shrink-0"></i>
+                  <span>Dado de Alta: ${escapeHtml(dischargeInfo.label)}</span>
+                </div>
+              ` : ''}
 
               ${needsReconsulta ? `
                 <div class="bg-amber-50 border border-amber-300 text-amber-900 px-3 py-2 rounded-xl text-xs font-bold flex items-center gap-2">
@@ -2082,6 +2884,13 @@
                 <div class="${needsReconsulta ? 'bg-amber-100/80 border-amber-300 text-amber-900' : 'bg-emerald-50/80 border-emerald-200/80 text-emerald-900'} border rounded-xl px-2.5 py-2 text-center">
                   <span class="block text-[10px] font-bold uppercase opacity-75">Sesiones</span>
                   <span class="text-xs font-extrabold">${cumSessions} / ${metaSessions}</span>
+                </div>
+              </div>
+
+              <div>
+                <span class="block text-[10px] font-bold uppercase tracking-wider text-slate-400 mb-1.5">Días Asignados (Lun–Vie)</span>
+                <div class="text-xs font-bold text-indigo-900 bg-indigo-50/80 border border-indigo-200/80 px-3 py-1.5 rounded-xl">
+                  ${escapeHtml(formatPatientDaysLabel(p))}
                 </div>
               </div>
 
@@ -2154,7 +2963,7 @@
             <td class="py-3 px-4 text-center">${st.gimnasioPatients} (${formatDecimal(st.gimnasioTreatments)})</td>
             <td class="py-3 px-4 text-center">${st.ocupacionalPatients}</td>
             <td class="py-3 px-4 text-center">${st.mntPatients}</td>
-            <td class="py-3 px-4 text-center">${st.podologiaPatients} / ${st.foniatriaPatients}</td>
+            <td class="py-3 px-4 text-center">${st.podologiaPatients} / ${st.foniatriaPatients} / ${st.ozonoterapiaPatients}</td>
             <td class="py-3 px-4 text-center">${st.consultaFisiatraPatients} / ${st.reconsultaFisiatraPatients}</td>
             <td class="py-3 px-4 text-center font-semibold text-sky-900">${st.fisioterapiaPatients} (${formatDecimal(st.fisioterapiaTotalTratamientos)} tr.)</td>
             <td class="py-3 px-4 text-center font-medium">M: ${st.mascCount} / F: ${st.femCount}</td>
@@ -2220,6 +3029,10 @@
       checkboxes.forEach(cb => {
         cb.checked = false;
       });
+      const dayCheckboxes = form.querySelectorAll('input[name="dia_semana"]');
+      dayCheckboxes.forEach(dcb => {
+        dcb.checked = false;
+      });
       ['Electroterapia', 'Magnetoterapia', 'Termoterapia'].forEach(modName => {
         toggleModalidadQtyInput(modName, false);
       });
@@ -2242,6 +3055,11 @@
         document.getElementById('paciente-sexo').value = patient.sexo || 'F';
         document.getElementById('paciente-sesiones-meta').value = patient.sesionesMeta || 10;
         document.getElementById('paciente-diagnostico').value = patient.diagnostico || '';
+
+        const assignedDays = Array.isArray(patient.diasSemana) ? patient.diasSemana : [];
+        dayCheckboxes.forEach(dcb => {
+          dcb.checked = assignedDays.includes(dcb.value);
+        });
 
         const mods = Array.isArray(patient.modalidades) ? patient.modalidades : [];
         checkboxes.forEach(cb => {
@@ -2292,6 +3110,10 @@
           document.querySelectorAll('#form-paciente input[name="modalidad"]:checked')
         ).map(cb => cb.value);
 
+        const selectedDays = Array.from(
+          document.querySelectorAll('#form-paciente input[name="dia_semana"]:checked')
+        ).map(cb => cb.value);
+
         const modalidadesCantidad = {};
         ['Electroterapia', 'Magnetoterapia', 'Termoterapia'].forEach(modName => {
           if (selectedModalidades.includes(modName)) {
@@ -2327,6 +3149,7 @@
               cedula,
               edad: edadNum,
               sexo,
+              diasSemana: selectedDays,
               modalidades: selectedModalidades,
               modalidadesCantidad,
               sesionesMeta,
@@ -2343,6 +3166,7 @@
             cedula,
             edad: edadNum,
             sexo,
+            diasSemana: selectedDays,
             modalidades: selectedModalidades,
             modalidadesCantidad,
             sesionesMeta,
@@ -2356,6 +3180,7 @@
         closePatientModal();
         recalculateAndRenderAll();
         renderPatientsCards();
+        renderSessionBookTable();
       } catch (err) {
         console.error('Error al guardar paciente:', err);
         showToast('Ocurrió un error al guardar el paciente.', 'error');
@@ -2364,19 +3189,57 @@
     window.savePatient = savePatient;
 
     let pendingConfirmAction = null;
+    let pendingConfirmRequiresPin = false;
+    const LIC_GABRIEL_SEAL_CODE = '6911';
 
-    function openConfirmModal(title, message, onConfirm) {
+    function openConfirmModal(title, message, onConfirm, options = {}) {
       const modal = document.getElementById('modal-confirm');
       const titleEl = document.getElementById('confirm-title');
       const msgEl = document.getElementById('confirm-message');
       const okBtn = document.getElementById('confirm-btn-ok');
+      const pinBox = document.getElementById('confirm-pin-box');
+      const pinInput = document.getElementById('confirm-pin-input');
+      const sealInput = document.getElementById('confirm-seal-input');
+      const pinError = document.getElementById('confirm-pin-error');
       if (!modal || !okBtn) return;
 
       if (titleEl) titleEl.textContent = title;
       if (msgEl) msgEl.textContent = message;
       pendingConfirmAction = onConfirm;
+      pendingConfirmRequiresPin = Boolean(options.requirePin);
+
+      if (pinBox && pinInput && sealInput && pinError) {
+        pinError.classList.add('hidden');
+        pinError.textContent = '';
+        pinInput.value = '';
+        sealInput.value = '';
+        if (pendingConfirmRequiresPin) {
+          pinBox.classList.remove('hidden');
+        } else {
+          pinBox.classList.add('hidden');
+        }
+      }
 
       okBtn.onclick = () => {
+        if (pendingConfirmRequiresPin) {
+          const enteredPin = pinInput ? pinInput.value.trim() : '';
+          const enteredSeal = sealInput ? sealInput.value.trim() : '';
+          const expectedPin = typeof window.DEFAULT_ROOM_PIN === 'string'
+            ? window.DEFAULT_ROOM_PIN
+            : 'SRISimonBolivar26112026';
+          if (enteredPin !== expectedPin || enteredSeal !== LIC_GABRIEL_SEAL_CODE) {
+            if (pinError) {
+              pinError.textContent = 'Contraseña o código de sello incorrecto. No se borraron las tarjetas.';
+              pinError.classList.remove('hidden');
+            }
+            if (enteredPin !== expectedPin && pinInput) {
+              pinInput.focus();
+            } else if (sealInput) {
+              sealInput.focus();
+            }
+            return;
+          }
+        }
         const fn = pendingConfirmAction;
         closeConfirmModal();
         if (typeof fn === 'function') fn();
@@ -2384,11 +3247,27 @@
 
       modal.classList.remove('hidden');
       modal.classList.add('flex');
+
+      if (pendingConfirmRequiresPin && pinInput) {
+        setTimeout(() => pinInput.focus(), 50);
+      }
     }
 
     function closeConfirmModal() {
       const modal = document.getElementById('modal-confirm');
+      const pinBox = document.getElementById('confirm-pin-box');
+      const pinInput = document.getElementById('confirm-pin-input');
+      const sealInput = document.getElementById('confirm-seal-input');
+      const pinError = document.getElementById('confirm-pin-error');
       pendingConfirmAction = null;
+      pendingConfirmRequiresPin = false;
+      if (pinInput) pinInput.value = '';
+      if (sealInput) sealInput.value = '';
+      if (pinError) {
+        pinError.textContent = '';
+        pinError.classList.add('hidden');
+      }
+      if (pinBox) pinBox.classList.add('hidden');
       if (!modal) return;
       modal.classList.add('hidden');
       modal.classList.remove('flex');
@@ -2409,10 +3288,21 @@
               attendanceMap[dateKey] = attendanceMap[dateKey].filter(id => id !== patientId);
             }
           });
+          Object.keys(calledQueueMap).forEach(dateKey => {
+            if (calledQueueMap[dateKey] && typeof calledQueueMap[dateKey] === 'object') {
+              delete calledQueueMap[dateKey][patientId];
+            }
+          });
+          if (dischargesMap && typeof dischargesMap === 'object') {
+            delete dischargesMap[patientId];
+          }
           savePatientsToStorage();
           saveAttendanceToStorage();
+          saveCalledQueueToStorage();
+          saveDischargesToStorage();
           recalculateAndRenderAll();
           renderPatientsCards();
+          renderSessionBookTable();
           showToast(`Tarjeta de ${nameLabel} eliminada.`, 'info');
         }
       );
@@ -2422,19 +3312,25 @@
     function confirmClearDemoData() {
       openConfirmModal(
         'Limpiar todos los datos',
-        'Esto borrará todas las tarjetas de pacientes y registros de asistencia guardados en este navegador. ¿Continuar?',
+        'Esta acción borrará todas las tarjetas de pacientes y registros de asistencia. Escribe la contraseña de la sala y el código de sello para confirmar.',
         () => {
           patients = [];
           attendanceMap = {};
           physiatristMap = {};
+          calledQueueMap = {};
+          dischargesMap = {};
           savePatientsToStorage();
           saveAttendanceToStorage();
           savePhysiatristToStorage();
+          saveCalledQueueToStorage();
+          saveDischargesToStorage();
           recalculateAndRenderAll();
           renderPatientsCards();
+          renderSessionBookTable();
           renderHistorialTable();
           showToast('Todos los datos fueron limpiados.', 'info');
-        }
+        },
+        { requirePin: true }
       );
     }
     window.confirmClearDemoData = confirmClearDemoData;
@@ -2475,9 +3371,10 @@
         ``,
         `🧩 *TERAPIA OCUPACIONAL (Aparte):* ${stats.ocupacionalPatients} pacientes`,
         ``,
-        `🦶🗣️🩺 *PODOLOGÍA, FONIATRÍA Y FISIATRÍA (Aparte):* ${stats.especialidadesTotal} atenciones`,
+        `🦶🗣️🫧🩺 *PODOLOGÍA, FONIATRÍA, OZONOTERAPIA Y FISIATRÍA (Aparte):* ${stats.especialidadesTotal} atenciones`,
         `  - Podología: ${stats.podologiaPatients}`,
         `  - Foniatría: ${stats.foniatriaPatients}`,
+        `  - Ozonoterapia: ${stats.ozonoterapiaPatients}`,
         `  - Fisiatría: Consulta: ${stats.consultaFisiatraPatients} | Reconsulta: ${stats.reconsultaFisiatraPatients}`
       ].join('\n');
 
@@ -2519,6 +3416,7 @@
         'Terapia Ocupacional',
         'Podología',
         'Foniatría',
+        'Ozonoterapia',
         'Consulta Fisiatra',
         'Reconsulta Fisiatra',
         ...ageSexHeaders
@@ -2545,6 +3443,7 @@
         stats.ocupacionalPatients,
         stats.podologiaPatients,
         stats.foniatriaPatients,
+        stats.ozonoterapiaPatients,
         stats.consultaFisiatraPatients,
         stats.reconsultaFisiatraPatients,
         ...ageSexRow
@@ -2584,6 +3483,7 @@
         'Terapia Ocupacional',
         'Podología',
         'Foniatría',
+        'Ozonoterapia',
         'Consulta Fisiatra',
         'Reconsulta Fisiatra',
         ...ageSexHeaders
@@ -2612,6 +3512,7 @@
           st.ocupacionalPatients,
           st.podologiaPatients,
           st.foniatriaPatients,
+          st.ozonoterapiaPatients,
           st.consultaFisiatraPatients,
           st.reconsultaFisiatraPatients,
           ...ageSexRow
