@@ -1,4 +1,4 @@
-<!DOCTYAPE html>
+<!DOCTYPE html>
 <html lang="es">
 <head>
   <meta charset="UTF-8" />
@@ -799,10 +799,10 @@
             <span id="llegada-fecha-badge" class="text-xs font-bold text-clinical-700 capitalize"></span>
           </div>
           <h2 class="text-xl sm:text-2xl font-extrabold text-slate-900 mt-1">
-            Libro de Sesiones por Paciente (Orden Alfabético A–Z)
+            Lista de Pacientes por Orden de Llegada
           </h2>
           <p class="text-xs sm:text-sm text-slate-500 mt-0.5">
-            Listado vertical ordenado <strong>alfabéticamente de la A a la Z</strong> (mostrando su N° de asistencia/tarjeta) y cuadrículas horizontales (<strong>Sesiones 1 a 45</strong>) con la <strong>fecha exacta</strong> en que asistió a cada sesión.
+            Cada paciente aparece <strong>uno debajo del otro en el orden exacto en que llegó</strong>, con sus tratamientos desplegados de forma horizontal para llamarlos rápidamente.
           </p>
         </div>
 
@@ -952,10 +952,10 @@
             </span>
           </div>
           <h2 class="text-xl sm:text-2xl font-extrabold text-slate-900 mt-1">
-            Libro de Sesiones por Paciente (Ordenado por N° de Asistencia / Tarjeta)
+            Libro de Sesiones por Paciente (Ordenado Alfabéticamente de la A a la Z por Apellido)
           </h2>
           <p class="text-xs sm:text-sm text-slate-500 mt-0.5">
-            Listado vertical ordenado por el <strong>N° de asistencia/tarjeta</strong> y cuadrículas horizontales (<strong>Sesiones 1 a 45</strong>) con la <strong>fecha exacta</strong> en que asistió a cada sesión.
+            Listado vertical ordenado <strong>alfabéticamente de la A a la Z por apellido</strong> (mostrando su N° de asistencia/tarjeta) y cuadrículas horizontales (<strong>Sesiones 1 a 45</strong>) con la <strong>fecha exacta</strong> en que asistió a cada sesión.
           </p>
         </div>
 
@@ -979,7 +979,7 @@
         </div>
       </div>
 
-      <!-- Tabla Vertical (Pacientes por N° Tarjeta/Asistencia) x Horizontal (Sesiones 1 a 45) -->
+      <!-- Tabla Vertical (Pacientes A-Z por Apellido) x Horizontal (Sesiones 1 a 45) -->
       <div class="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden">
         <div class="px-5 py-3.5 bg-indigo-50/70 border-b border-indigo-200/80 flex flex-wrap items-center justify-between gap-2">
           <div class="flex items-center gap-2">
@@ -2655,7 +2655,7 @@
 
       thead.innerHTML = `
         <th class="py-3 px-3 text-center min-w-[95px] sticky left-0 z-20 bg-slate-900 border-r border-slate-700">N° Asist.<br><span class="text-[9px] font-normal text-slate-300">(Tarjeta)</span></th>
-        <th class="py-3 px-3 min-w-[230px] sticky left-[95px] z-20 bg-slate-900 border-r border-slate-700">Paciente / Estado de Alta</th>
+        <th class="py-3 px-3 min-w-[230px] sticky left-[95px] z-20 bg-slate-900 border-r border-slate-700">Paciente (A–Z Apellido) / Alta</th>
         <th class="py-3 px-2.5 text-center min-w-[78px] bg-indigo-950 border-r border-slate-700">Total</th>
         ${sessionHeaders}
       `;
@@ -2753,8 +2753,8 @@
               isDischarged ? 'bg-rose-100/95 border-rose-300' : 'bg-white border-slate-200'
             }">
               <div class="flex flex-wrap items-center gap-1.5">
-                <span class="font-bold truncate max-w-[165px] ${isDischarged ? 'text-rose-950 line-through decoration-rose-600' : 'text-slate-900'}" title="${escapeHtml(p.nombre)} ${escapeHtml(p.apellido)}">
-                  ${escapeHtml(p.nombre)} ${escapeHtml(p.apellido)}
+                <span class="font-bold truncate max-w-[165px] ${isDischarged ? 'text-rose-950 line-through decoration-rose-600' : 'text-slate-900'}" title="${escapeHtml(p.apellido)} ${escapeHtml(p.nombre)}">
+                  ${escapeHtml(p.apellido)}, ${escapeHtml(p.nombre)}
                 </span>
                 ${isDischarged ? `
                   <span class="text-[10px] font-extrabold px-2 py-0.5 rounded-full bg-rose-600 text-white uppercase tracking-wide">
@@ -2788,7 +2788,7 @@
       }
 
       const sessionHeaders = Array.from({ length: totalSlots }, (_, i) => `Sesión ${i + 1}`);
-      const headers = ['N° Asistencia / Tarjeta', 'Nombre y Apellido', 'Cédula', 'Estado Alta', 'Motivo Alta', 'Total Sesiones', ...sessionHeaders];
+      const headers = ['N° Asistencia / Tarjeta', 'Apellido y Nombre', 'Cédula', 'Estado Alta', 'Motivo Alta', 'Total Sesiones', ...sessionHeaders];
 
       const lines = [headers.join(';')];
       sortedPatients.forEach((p, idx) => {
@@ -2798,7 +2798,7 @@
         const rowSlots = Array.from({ length: totalSlots }, (_, sIdx) => sessionDates[sIdx] || '');
         lines.push([
           cardLabel,
-          `${p.nombre} ${p.apellido}`,
+          `${p.apellido}, ${p.nombre}`,
           p.cedula,
           dischargeInfo ? 'Dado de Alta' : 'Activo',
           dischargeInfo ? dischargeInfo.label : '',
