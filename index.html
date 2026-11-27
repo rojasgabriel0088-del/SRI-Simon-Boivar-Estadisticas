@@ -272,13 +272,13 @@
           await setDoc(getPublicDocRef('attendance_state'), payload, { merge: true });
         } else if (collectionKey === 'physiatrist') {
           payload.map = value;
-          await setDoc(getPublicDocRef('physiatrist_state'), payload, { merge: true });
+          await setDoc(getPublicDocRef('physiatrist_state'), payload);
         } else if (collectionKey === 'calledQueue') {
           payload.map = value;
           await setDoc(getPublicDocRef('called_queue_state'), payload, { merge: true });
         } else if (collectionKey === 'discharges') {
           payload.map = value;
-          await setDoc(getPublicDocRef('discharges_state'), payload, { merge: true });
+          await setDoc(getPublicDocRef('discharges_state'), payload);
         }
         setCloudStatusBadge('Nube Sincronizada', 'live');
       } catch (err) {
@@ -1276,10 +1276,12 @@
       </div>
       <p id="confirm-message" class="text-sm text-slate-600 mb-4">¿Estás seguro de realizar esta acción?</p>
       <div id="confirm-pin-box" class="hidden mb-5">
-        <label class="block text-xs font-bold text-slate-700 uppercase mb-1.5">Contraseña de la sala para borrar todo *</label>
+        <label class="block text-xs font-bold text-slate-700 uppercase mb-1.5">Contraseña de la sala para confirmar *</label>
         <input type="password" id="confirm-pin-input" placeholder="Ingresa la contraseña de la sala" class="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 text-sm font-semibold focus:outline-none focus:ring-2 focus:ring-rose-500" />
-        <label class="block text-xs font-bold text-slate-700 uppercase mt-3 mb-1.5">Código de sello del Lic. Gabriel Rojas *</label>
-        <input type="password" id="confirm-seal-input" inputmode="numeric" placeholder="Ingresa el código de sello" class="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 text-sm font-semibold focus:outline-none focus:ring-2 focus:ring-rose-500" />
+        <div id="confirm-seal-wrapper" class="mt-3">
+          <label class="block text-xs font-bold text-slate-700 uppercase mb-1.5">Código de sello del Lic. Gabriel Rojas *</label>
+          <input type="password" id="confirm-seal-input" inputmode="numeric" placeholder="Ingresa el código de sello" class="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 text-sm font-semibold focus:outline-none focus:ring-2 focus:ring-rose-500" />
+        </div>
         <p id="confirm-pin-error" class="hidden text-xs font-semibold text-rose-600 mt-1.5"></p>
       </div>
       <div class="flex justify-end gap-3">
@@ -1462,6 +1464,50 @@
     }
     window.addLicensedStaffFromPanel = addLicensedStaffFromPanel;
 
+    function deleteLicensedStaffMember(rawName) {
+      const targetName = normalizeStaffName(rawName);
+      if (!targetName) return;
+
+      openConfirmModal(
+        'Eliminar licenciado registrado',
+        `¿Deseas eliminar a Lic. ${targetName} de la lista de licenciados? Ingresa la contraseña de la sala para confirmar.`,
+        () => {
+          licensedStaffList = licensedStaffList.filter(
+            item => item.toLowerCase() !== targetName.toLowerCase()
+          );
+          saveLicensedStaffToStorage();
+
+          let updatedPatients = false;
+          patients = patients.map(p => {
+            if (
+              String(p?.rehabilitadorTipo || '').trim() === 'Licenciado' &&
+              normalizeStaffName(p?.rehabilitadorNombre).toLowerCase() === targetName.toLowerCase()
+            ) {
+              updatedPatients = true;
+              return {
+                ...p,
+                rehabilitadorTipo: '',
+                rehabilitadorNombre: ''
+              };
+            }
+            return p;
+          });
+
+          if (updatedPatients) {
+            savePatientsToStorage();
+          }
+
+          populateLicensedSelectOptions();
+          renderPhysiotherapistsBreakdown();
+          renderPatientsCards();
+          renderAsistenciaList();
+          showToast(`Lic. ${targetName} eliminado de la lista.`, 'info');
+        },
+        { requirePin: true, requireSeal: false }
+      );
+    }
+    window.deleteLicensedStaffMember = deleteLicensedStaffMember;
+
     function getDischargeInfo(patientId) {
       if (!dischargesMap || typeof dischargesMap !== 'object') return null;
       const entry = dischargesMap[patientId];
@@ -1484,7 +1530,9 @@
         dischargesMap = {};
       }
 
-      if (!reason) {
+      const currentReason = dischargesMap[patientId]?.reason || null;
+
+      if (!reason || currentReason === reason) {
         delete dischargesMap[patientId];
         saveDischargesToStorage();
         showToast(`Alta retirada para ${fullName}. Vuelve a estado activo.`, 'info');
@@ -2103,7 +2151,12 @@
             <div class="rounded-xl border border-teal-200 bg-teal-50/60 p-3.5 flex flex-col justify-between gap-2">
               <div class="flex items-center justify-between gap-2">
                 <span class="text-[10px] font-extrabold uppercase tracking-wider px-2 py-0.5 rounded-md bg-teal-700 text-white">Licenciado</span>
-                <span class="text-[11px] font-bold text-teal-900">Hoy: ${lic.attendedToday}</span>
+                <div class="flex items-center gap-2">
+                  <span class="text-[11px] font-bold text-teal-900">Hoy: ${lic.attendedToday}</span>
+                  <button type="button" onclick="deleteLicensedStaffMember('${escapeHtml(lic.name)}')" class="p-1.5 rounded-lg bg-white hover:bg-rose-50 text-rose-600 border border-rose-200 transition" title="Eliminar licenciado">
+                    <i class="fa-solid fa-trash-can text-xs"></i>
+                  </button>
+                </div>
               </div>
               <div class="font-extrabold text-slate-900 text-sm leading-snug">
                 Lic. ${escapeHtml(lic.name)}
@@ -2195,6 +2248,8 @@
           gymTreatmentsM: 0,
           gymTreatmentsF: 0,
           gymTreatments: 0,
+          deptoElectroPatientsM: 0,
+          deptoElectroPatientsF: 0,
           deptoElectroM: 0,
           deptoElectroF: 0,
           deptoElectroTreatments: 0
@@ -2240,6 +2295,7 @@
         termoTreatments += qTermo;
 
         const patientElectroDepto = qElectro + qMagneto;
+        const hasElectroDepto = patientElectroDepto > 0;
         ageSexCounts[group.id].deptoElectroTreatments += patientElectroDepto;
         ageSexCounts[group.id].gymPatientsM += isMasc ? 1 : 0;
         ageSexCounts[group.id].gymPatientsF += isFem ? 1 : 0;
@@ -2248,8 +2304,14 @@
         ageSexCounts[group.id].gymTreatments = ageSexCounts[group.id].gymTreatmentsM + ageSexCounts[group.id].gymTreatmentsF;
 
         if (isMasc) {
+          if (hasElectroDepto) {
+            ageSexCounts[group.id].deptoElectroPatientsM += 1;
+          }
           ageSexCounts[group.id].deptoElectroM += patientElectroDepto;
         } else if (isFem) {
+          if (hasElectroDepto) {
+            ageSexCounts[group.id].deptoElectroPatientsF += 1;
+          }
           ageSexCounts[group.id].deptoElectroF += patientElectroDepto;
         }
 
@@ -2379,14 +2441,20 @@
           const sexData = stats.ageSexCounts[g.id] || {
             M: 0,
             F: 0,
+            gymPatientsM: 0,
+            gymPatientsF: 0,
             gymTreatmentsM: 0,
             gymTreatmentsF: 0,
             gymTreatments: 0,
+            deptoElectroPatientsM: 0,
+            deptoElectroPatientsF: 0,
             deptoElectroM: 0,
             deptoElectroF: 0,
             deptoElectroTreatments: 0
           };
           const totalGroup = sexData.M + sexData.F;
+          const totalGymPatients = sexData.gymPatientsM + sexData.gymPatientsF;
+          const totalElectroPatients = sexData.deptoElectroPatientsM + sexData.deptoElectroPatientsF;
           return `
             <div class="bg-slate-50 p-3 rounded-xl border border-slate-200 flex flex-col justify-between gap-2">
               <div class="flex items-center justify-between">
@@ -2404,24 +2472,28 @@
                 </div>
               </div>
               <div class="space-y-1.5 text-[10px] pt-1.5 border-t border-slate-200/80">
-                <div class="bg-teal-50/90 border border-teal-100 text-teal-950 px-2 py-1.5 rounded-lg" title="Tratamientos de Gimnasio (×6) por sexo">
-                  <div class="flex items-center justify-between font-bold mb-0.5">
-                    <span>Tr. Gym (×6):</span>
-                    <span class="font-extrabold text-teal-800">${formatDecimal(sexData.gymTreatments)}</span>
+                <div class="bg-teal-50/90 border border-teal-200/80 text-teal-950 px-2 py-1.5 rounded-lg space-y-1" title="Departamento Gimnasio: pacientes y tratamientos (×6) por sexo">
+                  <div class="flex items-center justify-between font-extrabold text-teal-900 border-b border-teal-200/60 pb-0.5">
+                    <span>GYM</span>
+                    <span>${totalGymPatients} pac · ${formatDecimal(sexData.gymTreatments)} tr</span>
                   </div>
-                  <div class="flex items-center justify-between text-[10px] font-semibold text-teal-900">
-                    <span>M: <strong>${formatDecimal(sexData.gymTreatmentsM)}</strong></span>
-                    <span>F: <strong>${formatDecimal(sexData.gymTreatmentsF)}</strong></span>
+                  <div class="flex items-center justify-between text-[10px] font-semibold text-teal-950">
+                    <span>M: <strong>${sexData.gymPatientsM}</strong> pac / <strong>${formatDecimal(sexData.gymTreatmentsM)}</strong> tr</span>
+                  </div>
+                  <div class="flex items-center justify-between text-[10px] font-semibold text-teal-950">
+                    <span>F: <strong>${sexData.gymPatientsF}</strong> pac / <strong>${formatDecimal(sexData.gymTreatmentsF)}</strong> tr</span>
                   </div>
                 </div>
-                <div class="bg-blue-50/90 border border-blue-100 text-blue-950 px-2 py-1.5 rounded-lg" title="Depto. Electroterapia (Electro + Magneto) por sexo">
-                  <div class="flex items-center justify-between font-bold mb-0.5">
-                    <span>Dpto. Electro:</span>
-                    <span class="font-extrabold text-blue-800">${sexData.deptoElectroTreatments}</span>
+                <div class="bg-blue-50/90 border border-blue-200/80 text-blue-950 px-2 py-1.5 rounded-lg space-y-1" title="Departamento Electroterapia (Electro + Magneto): pacientes y tratamientos por sexo">
+                  <div class="flex items-center justify-between font-extrabold text-blue-900 border-b border-blue-200/60 pb-0.5">
+                    <span>ELECTRO</span>
+                    <span>${totalElectroPatients} pac · ${sexData.deptoElectroTreatments} tr</span>
                   </div>
-                  <div class="flex items-center justify-between text-[10px] font-semibold text-blue-900">
-                    <span>M: <strong>${sexData.deptoElectroM}</strong></span>
-                    <span>F: <strong>${sexData.deptoElectroF}</strong></span>
+                  <div class="flex items-center justify-between text-[10px] font-semibold text-blue-950">
+                    <span>M: <strong>${sexData.deptoElectroPatientsM}</strong> pac / <strong>${sexData.deptoElectroM}</strong> tr</span>
+                  </div>
+                  <div class="flex items-center justify-between text-[10px] font-semibold text-blue-950">
+                    <span>F: <strong>${sexData.deptoElectroPatientsF}</strong> pac / <strong>${sexData.deptoElectroF}</strong> tr</span>
                   </div>
                 </div>
               </div>
@@ -3568,6 +3640,7 @@
 
     let pendingConfirmAction = null;
     let pendingConfirmRequiresPin = false;
+    let pendingConfirmRequiresSeal = false;
     const LIC_GABRIEL_SEAL_CODE = '6911';
 
     function openConfirmModal(title, message, onConfirm, options = {}) {
@@ -3577,6 +3650,7 @@
       const okBtn = document.getElementById('confirm-btn-ok');
       const pinBox = document.getElementById('confirm-pin-box');
       const pinInput = document.getElementById('confirm-pin-input');
+      const sealWrapper = document.getElementById('confirm-seal-wrapper');
       const sealInput = document.getElementById('confirm-seal-input');
       const pinError = document.getElementById('confirm-pin-error');
       if (!modal || !okBtn) return;
@@ -3585,6 +3659,7 @@
       if (msgEl) msgEl.textContent = message;
       pendingConfirmAction = onConfirm;
       pendingConfirmRequiresPin = Boolean(options.requirePin);
+      pendingConfirmRequiresSeal = options.requireSeal !== undefined ? Boolean(options.requireSeal) : Boolean(options.requirePin);
 
       if (pinBox && pinInput && sealInput && pinError) {
         pinError.classList.add('hidden');
@@ -3593,6 +3668,9 @@
         sealInput.value = '';
         if (pendingConfirmRequiresPin) {
           pinBox.classList.remove('hidden');
+          if (sealWrapper) {
+            sealWrapper.classList.toggle('hidden', !pendingConfirmRequiresSeal);
+          }
         } else {
           pinBox.classList.add('hidden');
         }
@@ -3605,12 +3683,17 @@
           const expectedPin = typeof window.DEFAULT_ROOM_PIN === 'string'
             ? window.DEFAULT_ROOM_PIN
             : 'SRISimonBolivar26112026';
-          if (enteredPin !== expectedPin || enteredSeal !== LIC_GABRIEL_SEAL_CODE) {
+          const pinValid = enteredPin === expectedPin;
+          const sealValid = !pendingConfirmRequiresSeal || enteredSeal === LIC_GABRIEL_SEAL_CODE;
+
+          if (!pinValid || !sealValid) {
             if (pinError) {
-              pinError.textContent = 'Contraseña o código de sello incorrecto. No se borraron las tarjetas.';
+              pinError.textContent = pendingConfirmRequiresSeal
+                ? 'Contraseña o código de sello incorrecto. Acción cancelada.'
+                : 'Contraseña de la sala incorrecta. No se eliminó el licenciado.';
               pinError.classList.remove('hidden');
             }
-            if (enteredPin !== expectedPin && pinInput) {
+            if (!pinValid && pinInput) {
               pinInput.focus();
             } else if (sealInput) {
               sealInput.focus();
@@ -3635,16 +3718,19 @@
       const modal = document.getElementById('modal-confirm');
       const pinBox = document.getElementById('confirm-pin-box');
       const pinInput = document.getElementById('confirm-pin-input');
+      const sealWrapper = document.getElementById('confirm-seal-wrapper');
       const sealInput = document.getElementById('confirm-seal-input');
       const pinError = document.getElementById('confirm-pin-error');
       pendingConfirmAction = null;
       pendingConfirmRequiresPin = false;
+      pendingConfirmRequiresSeal = false;
       if (pinInput) pinInput.value = '';
       if (sealInput) sealInput.value = '';
       if (pinError) {
         pinError.textContent = '';
         pinError.classList.add('hidden');
       }
+      if (sealWrapper) sealWrapper.classList.remove('hidden');
       if (pinBox) pinBox.classList.add('hidden');
       if (!modal) return;
       modal.classList.add('hidden');
@@ -3658,7 +3744,7 @@
 
       openConfirmModal(
         'Eliminar tarjeta de paciente',
-        `¿Deseas eliminar permanentemente la tarjeta de ${nameLabel} y su historial de asistencia?`,
+        `¿Deseas eliminar permanentemente la tarjeta de ${nameLabel} y su historial de asistencia? Ingresa la contraseña de la sala para confirmar.`,
         () => {
           patients = patients.filter(p => p.id !== patientId);
           Object.keys(attendanceMap).forEach(dateKey => {
@@ -3682,7 +3768,8 @@
           renderPatientsCards();
           renderSessionBookTable();
           showToast(`Tarjeta de ${nameLabel} eliminada.`, 'info');
-        }
+        },
+        { requirePin: true, requireSeal: false }
       );
     }
     window.deletePatient = deletePatient;
@@ -3725,14 +3812,20 @@
         const sx = stats.ageSexCounts[g.id] || {
           M: 0,
           F: 0,
+          gymPatientsM: 0,
+          gymPatientsF: 0,
           gymTreatmentsM: 0,
           gymTreatmentsF: 0,
           gymTreatments: 0,
+          deptoElectroPatientsM: 0,
+          deptoElectroPatientsF: 0,
           deptoElectroM: 0,
           deptoElectroF: 0,
           deptoElectroTreatments: 0
         };
-        return `• ${g.label}: M: ${sx.M} | F: ${sx.F} (Total: ${sx.M + sx.F}) — Tr. Gym: ${formatDecimal(sx.gymTreatments)} [M: ${formatDecimal(sx.gymTreatmentsM)} / F: ${formatDecimal(sx.gymTreatmentsF)}] | Dpto. Electro: ${sx.deptoElectroTreatments} [M: ${sx.deptoElectroM} / F: ${sx.deptoElectroF}]`;
+        const gymTotalPac = sx.gymPatientsM + sx.gymPatientsF;
+        const electroTotalPac = sx.deptoElectroPatientsM + sx.deptoElectroPatientsF;
+        return `• ${g.label}: M: ${sx.M} | F: ${sx.F} (Total: ${sx.M + sx.F})\n    - Gimnasio (${gymTotalPac} pac / ${formatDecimal(sx.gymTreatments)} tr): M: ${sx.gymPatientsM} pac (${formatDecimal(sx.gymTreatmentsM)} tr) | F: ${sx.gymPatientsF} pac (${formatDecimal(sx.gymTreatmentsF)} tr)\n    - Depto. Electro (${electroTotalPac} pac / ${sx.deptoElectroTreatments} tr): M: ${sx.deptoElectroPatientsM} pac (${sx.deptoElectroM} tr) | F: ${sx.deptoElectroPatientsF} pac (${sx.deptoElectroF} tr)`;
       }).join('\n');
 
       const reportText = [
