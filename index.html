@@ -487,6 +487,10 @@
             <span>Tarjetas</span>
             <span id="badge-total-pacientes" class="text-[11px] font-extrabold px-1.5 py-0.2 rounded-full bg-clinical-600 text-white">0</span>
           </button>
+          <button type="button" onclick="switchTab('licenciados')" id="nav-tab-licenciados" class="flex-1 sm:flex-initial px-3 py-2 rounded-lg text-xs sm:text-sm font-semibold text-clinical-100 hover:text-white transition flex items-center justify-center gap-1.5">
+            <i class="fa-solid fa-user-doctor"></i>
+            <span>Licenciados</span>
+          </button>
           <button type="button" onclick="switchTab('sesiones')" id="nav-tab-sesiones" class="flex-1 sm:flex-initial px-3 py-2 rounded-lg text-xs sm:text-sm font-semibold text-clinical-100 hover:text-white transition flex items-center justify-center gap-1.5">
             <i class="fa-solid fa-table-cells"></i>
             <span>Libro de Sesiones</span>
@@ -692,7 +696,7 @@
               <i class="fa-solid fa-cake-candles text-clinical-600"></i>
               <span>Rangos de Edad por Sexo, Gimnasio y Depto. Electroterapia</span>
             </h3>
-            <p class="text-xs text-slate-500 mt-0.5">Desglose por rango etario: Masculino (M), Femenino (F), tratamientos de Gimnasio (×6.5) y Depto. Electroterapia (Electro + Magneto).</p>
+            <p class="text-xs text-slate-500 mt-0.5">Desglose por rango etario: Masculino (M), Femenino (F), tratamientos de Gimnasio (×6) y Depto. Electroterapia (Electro + Magneto).</p>
           </div>
           <div class="flex items-center gap-3 text-xs font-bold">
             <span class="px-2.5 py-1 rounded-lg bg-sky-100 text-sky-900">Masculino (M): <span id="stat-masc">0</span></span>
@@ -906,6 +910,32 @@
 
       <!-- Cuadrícula de Tarjetas Digitales -->
       <div id="pacientes-cards-grid" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+        <!-- Renderizado dinámico por JS -->
+      </div>
+    </section>
+
+    <!-- ===================================================================== -->
+    <!-- VISTA 2A: PESTAÑA APARTE DE LICENCIADOS Y CONTROL EQUITATIVO          -->
+    <!-- ===================================================================== -->
+    <section id="view-licenciados" class="hidden space-y-6">
+      <div class="bg-white rounded-2xl shadow-sm border border-slate-200 p-5 flex flex-col lg:flex-row lg:items-center justify-between gap-4">
+        <div>
+          <div class="flex items-center gap-2">
+            <span class="text-xs font-extrabold uppercase tracking-wider px-2.5 py-0.5 rounded-full bg-teal-100 text-teal-900 border border-teal-300">
+              Control Equitativo de Carga
+            </span>
+            <span id="licenciados-fecha-badge" class="text-xs font-bold text-clinical-700 capitalize"></span>
+          </div>
+          <h2 class="text-xl sm:text-2xl font-extrabold text-slate-900 mt-1">
+            Registro y Control de Licenciados y Pasantes
+          </h2>
+          <p class="text-xs sm:text-sm text-slate-500 mt-0.5">
+            Registra cada licenciado por su nombre para seleccionarlo al editar tarjetas y controla cuántos pacientes tiene asignados y cuántos atendió hoy.
+          </p>
+        </div>
+      </div>
+
+      <div id="fisioterapeutas-apartado-section" class="bg-white rounded-2xl shadow-sm border border-slate-200 p-4 sm:p-5 space-y-4">
         <!-- Renderizado dinámico por JS -->
       </div>
     </section>
@@ -1192,6 +1222,34 @@
           </div>
         </div>
 
+        <!-- Detalles del Tratamiento y Rehabilitador Asignado -->
+        <div class="grid grid-cols-1 sm:grid-cols-2 gap-4 bg-slate-50 border border-slate-200 rounded-xl p-3.5">
+          <div>
+            <label class="block text-xs font-bold text-slate-700 uppercase mb-1">Detalles del Tratamiento / Dosificación (Opcional)</label>
+            <textarea id="paciente-detalles-tratamiento" rows="3" placeholder="Ej. TENS 80Hz / 15 min, Magneto 50 Gauss, dosificación o especificación..." class="w-full px-3 py-2 rounded-xl border border-slate-300 bg-white text-sm focus:outline-none focus:ring-2 focus:ring-clinical-500"></textarea>
+          </div>
+          <div class="space-y-2.5">
+            <div>
+              <label class="block text-xs font-bold text-slate-700 uppercase mb-1">Rehabilitador del Paciente (Opcional)</label>
+              <select id="paciente-rehabilitador-tipo" onchange="toggleRehabilitadorNameInput()" class="w-full px-3 py-2 rounded-xl border border-slate-300 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-clinical-500">
+                <option value="">Sin asignar</option>
+                <option value="Licenciado">Licenciado</option>
+                <option value="Pasante">Pasante</option>
+              </select>
+            </div>
+            <div id="paciente-licenciado-select-wrap" class="hidden">
+              <label class="block text-[11px] font-bold text-slate-600 uppercase mb-1">Licenciado Registrado</label>
+              <select id="paciente-licenciado-select" onchange="onLicenciadoSelectChange()" class="w-full px-3 py-2 rounded-xl border border-slate-300 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-clinical-500">
+                <option value="">Selecciona un licenciado registrado...</option>
+              </select>
+            </div>
+            <div id="paciente-rehabilitador-nombre-wrap">
+              <label id="paciente-rehabilitador-nombre-label" class="block text-[11px] font-bold text-slate-600 uppercase mb-1">¿Quién lo atiende?</label>
+              <input type="text" id="paciente-rehabilitador-nombre" disabled placeholder="Ej. Gabriel Rojas o nombre del pasante" class="w-full px-3 py-1.5 rounded-xl border border-slate-300 text-sm bg-slate-100 text-slate-700 disabled:opacity-60 focus:outline-none focus:ring-2 focus:ring-clinical-500" />
+            </div>
+          </div>
+        </div>
+
         <div class="pt-3 border-t border-slate-200 flex items-center justify-end gap-3">
           <button type="button" onclick="closePatientModal()" class="px-4 py-2.5 rounded-xl border border-slate-300 text-slate-700 text-sm font-semibold hover:bg-slate-50 transition">
             Cancelar
@@ -1244,7 +1302,8 @@
       ATTENDANCE: 'sri_sb_attendance_v1',
       PHYSIATRIST: 'sri_sb_physiatrist_v1',
       CALLED_QUEUE: 'sri_sb_called_queue_v1',
-      DISCHARGES: 'sri_sb_discharges_v1'
+      DISCHARGES: 'sri_sb_discharges_v1',
+      LICENSED_STAFF: 'sri_sb_licensed_staff_v1'
     };
 
     const AGE_GROUPS = [
@@ -1344,7 +1403,64 @@
     let physiatristMap = {};
     let calledQueueMap = {};
     let dischargesMap = {};
+    let licensedStaffList = [];
     let selectedDateStr = getTodayISO();
+
+    function normalizeStaffName(name) {
+      return String(name || '').replace(/\s+/g, ' ').trim();
+    }
+
+    function addLicensedStaffMember(rawName) {
+      const cleanName = normalizeStaffName(rawName);
+      if (!cleanName) return '';
+      const exists = licensedStaffList.some(item => item.toLowerCase() === cleanName.toLowerCase());
+      if (!exists) {
+        licensedStaffList.push(cleanName);
+        licensedStaffList.sort((a, b) => a.localeCompare(b, 'es'));
+        saveLicensedStaffToStorage();
+      }
+      return cleanName;
+    }
+
+    function populateLicensedSelectOptions(selectedName = '') {
+      const sel = document.getElementById('paciente-licenciado-select');
+      if (!sel) return;
+      const optionsHtml = [
+        '<option value="">Selecciona un licenciado registrado...</option>',
+        ...licensedStaffList.map(name => `<option value="${escapeHtml(name)}">${escapeHtml(name)}</option>`)
+      ].join('');
+      sel.innerHTML = optionsHtml;
+      if (selectedName && licensedStaffList.includes(selectedName)) {
+        sel.value = selectedName;
+      } else {
+        sel.value = '';
+      }
+    }
+
+    function onLicenciadoSelectChange() {
+      const sel = document.getElementById('paciente-licenciado-select');
+      const nombreEl = document.getElementById('paciente-rehabilitador-nombre');
+      if (!sel || !nombreEl) return;
+      if (sel.value) {
+        nombreEl.value = sel.value;
+      }
+    }
+    window.onLicenciadoSelectChange = onLicenciadoSelectChange;
+
+    function addLicensedStaffFromPanel() {
+      const inputEl = document.getElementById('nuevo-licenciado-input');
+      if (!inputEl) return;
+      const added = addLicensedStaffMember(inputEl.value);
+      if (!added) {
+        showToast('Escribe el nombre del licenciado para registrarlo.', 'error');
+        return;
+      }
+      inputEl.value = '';
+      populateLicensedSelectOptions(added);
+      renderPhysiotherapistsBreakdown();
+      showToast(`Licenciado "${added}" registrado en la sala.`, 'success');
+    }
+    window.addLicensedStaffFromPanel = addLicensedStaffFromPanel;
 
     function getDischargeInfo(patientId) {
       if (!dischargesMap || typeof dischargesMap !== 'object') return null;
@@ -1654,7 +1770,7 @@
     }
 
     function switchTab(tabName) {
-      const tabs = ['asistencia', 'llegada', 'pacientes', 'sesiones', 'historial'];
+      const tabs = ['asistencia', 'llegada', 'pacientes', 'licenciados', 'sesiones', 'historial'];
       tabs.forEach(name => {
         const viewEl = document.getElementById(`view-${name}`);
         const navBtn = document.getElementById(`nav-tab-${name}`);
@@ -1677,6 +1793,8 @@
         renderQuickArrivalSuggestions();
       } else if (tabName === 'pacientes') {
         renderPatientsCards();
+      } else if (tabName === 'licenciados') {
+        renderPhysiotherapistsBreakdown();
       } else if (tabName === 'sesiones') {
         renderSessionBookTable();
       } else if (tabName === 'historial') {
@@ -1725,6 +1843,22 @@
         } else {
           dischargesMap = {};
         }
+
+        const rawStaff = localStorage.getItem(STORAGE_KEYS.LICENSED_STAFF);
+        if (rawStaff) {
+          licensedStaffList = JSON.parse(rawStaff);
+        } else {
+          licensedStaffList = [];
+        }
+
+        patients.forEach(p => {
+          if (String(p?.rehabilitadorTipo || '').trim() === 'Licenciado') {
+            const name = normalizeStaffName(p?.rehabilitadorNombre);
+            if (name && !licensedStaffList.some(item => item.toLowerCase() === name.toLowerCase())) {
+              licensedStaffList.push(name);
+            }
+          }
+        });
       } catch (e) {
         console.error('Error cargando datos:', e);
         patients = [];
@@ -1732,7 +1866,12 @@
         physiatristMap = {};
         calledQueueMap = {};
         dischargesMap = {};
+        licensedStaffList = [];
       }
+    }
+
+    function saveLicensedStaffToStorage() {
+      localStorage.setItem(STORAGE_KEYS.LICENSED_STAFF, JSON.stringify(licensedStaffList));
     }
 
     function savePatientsToStorage() {
@@ -1828,6 +1967,216 @@
       }).join(', ');
     }
 
+    function formatPatientRehabilitadorLabel(patient) {
+      const tipo = String(patient?.rehabilitadorTipo || '').trim();
+      const nombre = String(patient?.rehabilitadorNombre || '').trim();
+      if (!tipo && !nombre) return '';
+      if (tipo && nombre) return `${tipo}: ${nombre}`;
+      return tipo || nombre;
+    }
+    window.formatPatientRehabilitadorLabel = formatPatientRehabilitadorLabel;
+
+    function toggleRehabilitadorNameInput() {
+      const tipoEl = document.getElementById('paciente-rehabilitador-tipo');
+      const nombreEl = document.getElementById('paciente-rehabilitador-nombre');
+      const labelEl = document.getElementById('paciente-rehabilitador-nombre-label');
+      const licWrapEl = document.getElementById('paciente-licenciado-select-wrap');
+      const nombreWrapEl = document.getElementById('paciente-rehabilitador-nombre-wrap');
+      if (!tipoEl || !nombreEl) return;
+
+      const tipo = tipoEl.value;
+      const isLic = tipo === 'Licenciado';
+      const isPas = tipo === 'Pasante';
+      const enabled = isLic || isPas;
+      nombreEl.disabled = !enabled;
+      nombreEl.classList.toggle('bg-white', enabled);
+      nombreEl.classList.toggle('bg-slate-100', !enabled);
+
+      if (licWrapEl) {
+        licWrapEl.classList.toggle('hidden', !isLic);
+        if (isLic) {
+          populateLicensedSelectOptions(normalizeStaffName(nombreEl.value));
+        }
+      }
+
+      if (nombreWrapEl) {
+        nombreWrapEl.classList.toggle('hidden', isLic && licensedStaffList.length > 0 && !normalizeStaffName(nombreEl.value));
+      }
+
+      if (labelEl) {
+        labelEl.textContent = isLic
+          ? 'Nombre del Licenciado (se guarda al registrar)'
+          : isPas
+            ? 'Nombre del Pasante (opcional)'
+            : '¿Quién lo atiende?';
+      }
+
+      if (!enabled) {
+        nombreEl.value = '';
+      }
+    }
+    window.toggleRehabilitadorNameInput = toggleRehabilitadorNameInput;
+
+    function getPhysiotherapistsSummary() {
+      const licensedMap = new Map();
+
+      licensedStaffList.forEach(name => {
+        const clean = normalizeStaffName(name);
+        if (clean) {
+          licensedMap.set(clean.toLowerCase(), {
+            name: clean,
+            totalPatients: 0,
+            attendedToday: 0
+          });
+        }
+      });
+
+      const attendedIds = Array.isArray(attendanceMap[selectedDateStr]) ? attendanceMap[selectedDateStr] : [];
+      let pasantesTotalPatients = 0;
+      let pasantesAttendedToday = 0;
+      let unassignedPatients = 0;
+
+      patients.forEach(p => {
+        const tipo = String(p?.rehabilitadorTipo || '').trim();
+        const nombre = normalizeStaffName(p?.rehabilitadorNombre);
+        const isAttendedToday = attendedIds.includes(p.id);
+
+        if (tipo === 'Licenciado') {
+          const finalName = nombre || 'Licenciado sin nombre';
+          const key = finalName.toLowerCase();
+          if (!licensedMap.has(key)) {
+            licensedMap.set(key, {
+              name: finalName,
+              totalPatients: 0,
+              attendedToday: 0
+            });
+          }
+          const entry = licensedMap.get(key);
+          entry.totalPatients += 1;
+          if (isAttendedToday) {
+            entry.attendedToday += 1;
+          }
+        } else if (tipo === 'Pasante') {
+          pasantesTotalPatients += 1;
+          if (isAttendedToday) {
+            pasantesAttendedToday += 1;
+          }
+        } else {
+          unassignedPatients += 1;
+        }
+      });
+
+      const licensedList = Array.from(licensedMap.values()).sort((a, b) =>
+        b.totalPatients - a.totalPatients || a.name.localeCompare(b.name, 'es')
+      );
+
+      const licensedTotalPatients = licensedList.reduce((acc, item) => acc + item.totalPatients, 0);
+      const licensedAttendedToday = licensedList.reduce((acc, item) => acc + item.attendedToday, 0);
+
+      return {
+        licensedList,
+        licensedTotalPatients,
+        licensedAttendedToday,
+        pasantesTotalPatients,
+        pasantesAttendedToday,
+        unassignedPatients
+      };
+    }
+
+    function ensurePhysiotherapistsSectionContainer() {
+      return document.getElementById('fisioterapeutas-apartado-section');
+    }
+
+    function renderPhysiotherapistsBreakdown() {
+      const container = ensurePhysiotherapistsSectionContainer();
+      if (!container) return;
+
+      const fechaBadge = document.getElementById('licenciados-fecha-badge');
+      if (fechaBadge) {
+        fechaBadge.textContent = `${formatSpanishDate(selectedDateStr)}${getRelativeLabel(selectedDateStr)}`;
+      }
+
+      const summary = getPhysiotherapistsSummary();
+
+      const licensedCardsHtml = summary.licensedList.length > 0
+        ? summary.licensedList.map(lic => `
+            <div class="rounded-xl border border-teal-200 bg-teal-50/60 p-3.5 flex flex-col justify-between gap-2">
+              <div class="flex items-center justify-between gap-2">
+                <span class="text-[10px] font-extrabold uppercase tracking-wider px-2 py-0.5 rounded-md bg-teal-700 text-white">Licenciado</span>
+                <span class="text-[11px] font-bold text-teal-900">Hoy: ${lic.attendedToday}</span>
+              </div>
+              <div class="font-extrabold text-slate-900 text-sm leading-snug">
+                Lic. ${escapeHtml(lic.name)}
+              </div>
+              <div class="flex items-baseline justify-between pt-1 border-t border-teal-200/70">
+                <span class="text-[11px] font-semibold text-slate-600">Pacientes a cargo:</span>
+                <span class="text-xl font-extrabold text-teal-900">${lic.totalPatients}</span>
+              </div>
+            </div>
+          `).join('')
+        : `
+            <div class="col-span-full rounded-xl border border-dashed border-slate-300 bg-slate-50 p-4 text-xs text-slate-500">
+              Aún no hay licenciados registrados. Agrega cada licenciado arriba para ver cuántos pacientes tiene a cargo.
+            </div>
+          `;
+
+      container.innerHTML = `
+        <div class="flex flex-col lg:flex-row lg:items-center justify-between gap-3 pb-3 border-b border-slate-200">
+          <div>
+            <h3 class="text-sm sm:text-base font-extrabold uppercase tracking-wider text-slate-800 flex items-center gap-2">
+              <i class="fa-solid fa-user-doctor text-teal-700"></i>
+              <span>Fisioterapeutas</span>
+            </h3>
+            <p class="text-xs text-slate-500 mt-0.5">
+              Registro de licenciados y conteo de pacientes a cargo de cada licenciado y de los pasantes en general.
+            </p>
+          </div>
+
+          <div class="flex flex-col sm:flex-row items-stretch sm:items-center gap-2">
+            <input type="text" id="nuevo-licenciado-input" onkeydown="if(event.key==='Enter'){event.preventDefault();addLicensedStaffFromPanel();}" placeholder="Registrar nombre del licenciado..." class="px-3 py-2 rounded-xl border border-slate-300 text-xs sm:text-sm focus:outline-none focus:ring-2 focus:ring-teal-500" />
+            <button type="button" onclick="addLicensedStaffFromPanel()" class="px-4 py-2 rounded-xl bg-teal-700 hover:bg-teal-800 text-white text-xs sm:text-sm font-bold transition flex items-center justify-center gap-1.5 shrink-0">
+              <i class="fa-solid fa-plus"></i>
+              <span>Registrar Licenciado</span>
+            </button>
+          </div>
+        </div>
+
+        <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+          <div class="rounded-xl border border-teal-300 bg-teal-50 p-3.5">
+            <span class="block text-[10px] font-extrabold uppercase tracking-wider text-teal-800">Total Licenciados</span>
+            <span class="text-2xl font-extrabold text-teal-950">${summary.licensedTotalPatients} <span class="text-xs font-semibold">pac.</span></span>
+            <span class="block text-[11px] text-teal-800 mt-0.5">Asistieron hoy: <strong>${summary.licensedAttendedToday}</strong></span>
+          </div>
+
+          <div class="rounded-xl border border-amber-300 bg-amber-50 p-3.5">
+            <span class="block text-[10px] font-extrabold uppercase tracking-wider text-amber-900">Pasantes (General)</span>
+            <span class="text-2xl font-extrabold text-amber-950">${summary.pasantesTotalPatients} <span class="text-xs font-semibold">pac.</span></span>
+            <span class="block text-[11px] text-amber-900 mt-0.5">Asistieron hoy: <strong>${summary.pasantesAttendedToday}</strong></span>
+          </div>
+
+          <div class="rounded-xl border border-slate-200 bg-slate-50 p-3.5">
+            <span class="block text-[10px] font-extrabold uppercase tracking-wider text-slate-600">Licenciados Registrados</span>
+            <span class="text-2xl font-extrabold text-slate-900">${summary.licensedList.length}</span>
+            <span class="block text-[11px] text-slate-500 mt-0.5">En nómina de la sala</span>
+          </div>
+
+          <div class="rounded-xl border border-slate-200 bg-slate-50 p-3.5">
+            <span class="block text-[10px] font-extrabold uppercase tracking-wider text-slate-600">Sin Rehabilitador</span>
+            <span class="text-2xl font-extrabold text-slate-900">${summary.unassignedPatients}</span>
+            <span class="block text-[11px] text-slate-500 mt-0.5">Tarjetas sin asignar</span>
+          </div>
+        </div>
+
+        <div>
+          <div class="text-xs font-bold uppercase tracking-wider text-slate-600 mb-2">Pacientes por cada Licenciado</div>
+          <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+            ${licensedCardsHtml}
+          </div>
+        </div>
+      `;
+    }
+    window.renderPhysiotherapistsBreakdown = renderPhysiotherapistsBreakdown;
+
     function calculateStatsForDate(isoStr) {
       const attendedIds = Array.isArray(attendanceMap[isoStr]) ? attendanceMap[isoStr] : [];
       const attendedPatients = patients.filter(p => attendedIds.includes(p.id));
@@ -1894,8 +2243,8 @@
         ageSexCounts[group.id].deptoElectroTreatments += patientElectroDepto;
         ageSexCounts[group.id].gymPatientsM += isMasc ? 1 : 0;
         ageSexCounts[group.id].gymPatientsF += isFem ? 1 : 0;
-        ageSexCounts[group.id].gymTreatmentsM = ageSexCounts[group.id].gymPatientsM * 6.5;
-        ageSexCounts[group.id].gymTreatmentsF = ageSexCounts[group.id].gymPatientsF * 6.5;
+        ageSexCounts[group.id].gymTreatmentsM = ageSexCounts[group.id].gymPatientsM * 6;
+        ageSexCounts[group.id].gymTreatmentsF = ageSexCounts[group.id].gymPatientsF * 6;
         ageSexCounts[group.id].gymTreatments = ageSexCounts[group.id].gymTreatmentsM + ageSexCounts[group.id].gymTreatmentsF;
 
         if (isMasc) {
@@ -1942,7 +2291,7 @@
         });
       }
 
-      const gimnasioTreatments = gimnasioPatients * 6.5;
+      const gimnasioTreatments = gimnasioPatients * 6;
       const fisioterapiaTotalTratamientos = electroTreatments + magnetoTreatments + termoTreatments + gimnasioTreatments;
       const fisiatríaTotal = consultaFisiatraPatients + reconsultaFisiatraPatients;
       const especialidadesTotal = podologiaPatients + foniatriaPatients + ozonoterapiaPatients + fisiatríaTotal;
@@ -2055,9 +2404,9 @@
                 </div>
               </div>
               <div class="space-y-1.5 text-[10px] pt-1.5 border-t border-slate-200/80">
-                <div class="bg-teal-50/90 border border-teal-100 text-teal-950 px-2 py-1.5 rounded-lg" title="Tratamientos de Gimnasio (×6.5) por sexo">
+                <div class="bg-teal-50/90 border border-teal-100 text-teal-950 px-2 py-1.5 rounded-lg" title="Tratamientos de Gimnasio (×6) por sexo">
                   <div class="flex items-center justify-between font-bold mb-0.5">
-                    <span>Tr. Gym (×6.5):</span>
+                    <span>Tr. Gym (×6):</span>
                     <span class="font-extrabold text-teal-800">${formatDecimal(sexData.gymTreatments)}</span>
                   </div>
                   <div class="flex items-center justify-between text-[10px] font-semibold text-teal-900">
@@ -2087,6 +2436,7 @@
       if (mascEl) mascEl.textContent = stats.mascCount;
 
       renderWeeklyScheduleOverview();
+      renderPhysiotherapistsBreakdown();
       updateArrivalOrderBadge();
       renderAsistenciaList();
       renderArrivalQueueTable();
@@ -2717,7 +3067,9 @@
         const cedula = String(p.cedula || '').toLowerCase();
         const numTarjeta = String(p.numeroTarjeta || '').toLowerCase();
         const diag = String(p.diagnostico || '').toLowerCase();
-        return fullName.includes(query) || cedula.includes(query) || numTarjeta.includes(query) || diag.includes(query);
+        const details = String(p.detallesTratamiento || '').toLowerCase();
+        const rehab = formatPatientRehabilitadorLabel(p).toLowerCase();
+        return fullName.includes(query) || cedula.includes(query) || numTarjeta.includes(query) || diag.includes(query) || details.includes(query) || rehab.includes(query);
       });
 
       if (countBadge) {
@@ -2744,6 +3096,8 @@
         const isPhysDay = isPhysiatristDay(selectedDateStr);
         const mods = formatPatientModalidadesLabel(p);
         const daysLabel = formatPatientDaysLabel(p);
+        const detailsLabel = String(p.detallesTratamiento || '').trim();
+        const rehabLabel = formatPatientRehabilitadorLabel(p);
         const dischargeInfo = getDischargeInfo(p.id);
 
         return `
@@ -2757,6 +3111,7 @@
                 <span class="text-xs font-semibold px-2 py-0.5 rounded-full bg-slate-100 text-slate-700">C.I. ${escapeHtml(p.cedula)}</span>
                 <span class="text-xs font-semibold px-2 py-0.5 rounded-full bg-clinical-50 text-clinical-700 border border-clinical-200">${escapeHtml(String(p.edad))} años · ${escapeHtml(ageGroup.label)}</span>
                 <span class="text-xs font-bold px-2 py-0.5 rounded-full ${p.sexo === 'F' ? 'bg-pink-100 text-pink-800' : 'bg-sky-100 text-sky-800'}">${escapeHtml(p.sexo)}</span>
+                ${rehabLabel ? `<span class="text-xs font-bold px-2.5 py-0.5 rounded-full bg-teal-100 text-teal-900 border border-teal-200"><i class="fa-solid fa-user-doctor mr-1"></i>${escapeHtml(rehabLabel)}</span>` : ''}
                 ${needsReconsulta ? `<span class="text-xs font-extrabold px-2.5 py-0.5 rounded-full bg-amber-500 text-white shadow-xs animate-pulse"><i class="fa-solid fa-bell mr-1"></i>Listo para Reconsulta (${cumSessions}/${metaSessions})</span>` : ''}
                 ${physVisit === 'consulta' ? '<span class="text-xs font-bold px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-800 border border-emerald-200">Consulta Fisiatra</span>' : ''}
                 ${physVisit === 'reconsulta' ? '<span class="text-xs font-bold px-2 py-0.5 rounded-full bg-amber-100 text-amber-800 border border-amber-200">Reconsulta Fisiatra</span>' : ''}
@@ -2767,6 +3122,11 @@
                 <span><strong>Asistencias acumuladas:</strong> ${cumSessions} / ${metaSessions}</span>
                 ${p.diagnostico ? `<span><strong>Dx:</strong> ${escapeHtml(p.diagnostico)}</span>` : ''}
               </div>
+              ${detailsLabel ? `
+                <div class="text-xs text-amber-950 bg-amber-50/90 border border-amber-200/80 px-2.5 py-1 rounded-lg inline-block">
+                  <strong>Detalles del tratamiento:</strong> ${escapeHtml(detailsLabel)}
+                </div>
+              ` : ''}
             </div>
 
             <div class="flex flex-wrap items-center gap-2 self-end lg:self-center">
@@ -2819,7 +3179,9 @@
         const cedula = String(p.cedula || '').toLowerCase();
         const numTarjeta = String(p.numeroTarjeta || '').toLowerCase();
         const diag = String(p.diagnostico || '').toLowerCase();
-        return fullName.includes(query) || cedula.includes(query) || numTarjeta.includes(query) || diag.includes(query);
+        const details = String(p.detallesTratamiento || '').toLowerCase();
+        const rehab = formatPatientRehabilitadorLabel(p).toLowerCase();
+        return fullName.includes(query) || cedula.includes(query) || numTarjeta.includes(query) || diag.includes(query) || details.includes(query) || rehab.includes(query);
       });
 
       if (filtered.length === 0) {
@@ -2837,65 +3199,57 @@
         const metaSessions = p.sesionesMeta ? Number(p.sesionesMeta) : 10;
         const needsReconsulta = cumSessions >= metaSessions;
         const mods = Array.isArray(p.modalidades) ? p.modalidades : [];
+        const rehabLabel = formatPatientRehabilitadorLabel(p);
+        const detailsLabel = String(p.detallesTratamiento || '').trim();
         const dischargeInfo = getDischargeInfo(p.id);
 
         return `
-          <article class="bg-white rounded-2xl border ${dischargeInfo ? 'border-rose-400 ring-2 ring-rose-200/70' : (needsReconsulta ? 'border-amber-400 ring-2 ring-amber-200/60' : 'border-slate-200')} shadow-sm hover:shadow-md transition flex flex-col justify-between overflow-hidden">
-            <div class="p-5 pb-4 space-y-3">
-              <div class="flex items-start justify-between gap-3">
+          <article class="bg-white rounded-2xl border ${dischargeInfo ? 'border-rose-300' : (needsReconsulta ? 'border-amber-300' : 'border-slate-200')} shadow-sm hover:shadow-md transition flex flex-col justify-between overflow-hidden">
+            <div class="p-5 space-y-3.5">
+              <div class="flex items-start justify-between gap-2 pb-2.5 border-b border-slate-100">
                 <div class="min-w-0">
                   <div class="flex flex-wrap items-center gap-1.5 mb-1">
-                    ${p.numeroTarjeta ? `<span class="text-[11px] font-extrabold px-2 py-0.5 rounded-md bg-slate-800 text-white tracking-wide">Tarjeta N° ${escapeHtml(p.numeroTarjeta)}</span>` : ''}
+                    ${p.numeroTarjeta ? `<span class="text-[11px] font-extrabold px-2 py-0.5 rounded-md bg-slate-800 text-white">N° ${escapeHtml(p.numeroTarjeta)}</span>` : ''}
                     <span class="text-[11px] font-bold px-2 py-0.5 rounded-md ${p.sexo === 'F' ? 'bg-pink-100 text-pink-800' : 'bg-sky-100 text-sky-800'}">
-                      ${p.sexo === 'F' ? 'Femenino' : 'Masculino'}
+                      ${p.sexo === 'F' ? 'Fem (F)' : 'Masc (M)'}
                     </span>
                     ${dischargeInfo ? `<span class="text-[11px] font-extrabold px-2 py-0.5 rounded-md bg-rose-600 text-white">${escapeHtml(dischargeInfo.shortLabel)}</span>` : ''}
                   </div>
                   <h3 class="font-bold text-slate-900 text-base leading-snug truncate" title="${escapeHtml(p.nombre)} ${escapeHtml(p.apellido)}">
                     ${escapeHtml(p.nombre)} ${escapeHtml(p.apellido)}
                   </h3>
-                  <p class="text-xs text-slate-500 font-medium mt-0.5">C.I.: ${escapeHtml(p.cedula)}</p>
+                  <p class="text-xs text-slate-500 font-medium">C.I.: ${escapeHtml(p.cedula)}</p>
                 </div>
+                <span class="shrink-0 text-xs font-extrabold px-2.5 py-1 rounded-xl ${needsReconsulta ? 'bg-amber-100 text-amber-900 border border-amber-200' : 'bg-clinical-50 text-clinical-800 border border-clinical-200'}">
+                  ${cumSessions} / ${metaSessions} ses.
+                </span>
               </div>
 
               ${dischargeInfo ? `
-                <div class="bg-rose-50 border border-rose-300 text-rose-900 px-3 py-2 rounded-xl text-xs font-bold flex items-center gap-2">
-                  <i class="fa-solid fa-circle-xmark text-rose-600 shrink-0"></i>
-                  <span>Dado de Alta: ${escapeHtml(dischargeInfo.label)}</span>
+                <div class="bg-rose-50 border border-rose-200 text-rose-900 px-3 py-2 rounded-xl text-xs font-semibold">
+                  Dado de alta: ${escapeHtml(dischargeInfo.label)}
                 </div>
               ` : ''}
 
               ${needsReconsulta ? `
-                <div class="bg-amber-50 border border-amber-300 text-amber-900 px-3 py-2 rounded-xl text-xs font-bold flex items-center gap-2">
-                  <i class="fa-solid fa-bell text-amber-600 shrink-0"></i>
-                  <span>Completó ${cumSessions}/${metaSessions} sesiones — Listo para Reconsulta</span>
+                <div class="bg-amber-50 border border-amber-200 text-amber-900 px-3 py-2 rounded-xl text-xs font-semibold">
+                  Listo para reconsulta (${cumSessions}/${metaSessions} sesiones)
                 </div>
               ` : ''}
 
-              <div class="grid grid-cols-3 gap-2 pt-1">
-                <div class="bg-slate-50 border border-slate-200/80 rounded-xl px-2.5 py-2 text-center">
-                  <span class="block text-[10px] font-bold uppercase text-slate-400">Edad</span>
-                  <span class="text-xs font-extrabold text-slate-800">${escapeHtml(String(p.edad))} años</span>
+              <div class="grid grid-cols-2 gap-2">
+                <div class="bg-slate-50 border border-slate-200/80 rounded-xl px-3 py-2">
+                  <span class="block text-[10px] font-bold uppercase text-slate-400">Edad y Rango</span>
+                  <span class="text-xs font-bold text-slate-800">${escapeHtml(String(p.edad))} años · ${escapeHtml(ageGroup.label)}</span>
                 </div>
-                <div class="bg-clinical-50/70 border border-clinical-200/70 rounded-xl px-2.5 py-2 text-center">
-                  <span class="block text-[10px] font-bold uppercase text-clinical-600">Rango</span>
-                  <span class="text-[11px] font-extrabold text-clinical-900">${escapeHtml(ageGroup.label)}</span>
-                </div>
-                <div class="${needsReconsulta ? 'bg-amber-100/80 border-amber-300 text-amber-900' : 'bg-emerald-50/80 border-emerald-200/80 text-emerald-900'} border rounded-xl px-2.5 py-2 text-center">
-                  <span class="block text-[10px] font-bold uppercase opacity-75">Sesiones</span>
-                  <span class="text-xs font-extrabold">${cumSessions} / ${metaSessions}</span>
+                <div class="bg-slate-50 border border-slate-200/80 rounded-xl px-3 py-2">
+                  <span class="block text-[10px] font-bold uppercase text-slate-400">Días Asignados</span>
+                  <span class="text-xs font-bold text-slate-800 block truncate" title="${escapeHtml(formatPatientDaysLabel(p))}">${escapeHtml(formatPatientDaysLabel(p))}</span>
                 </div>
               </div>
 
               <div>
-                <span class="block text-[10px] font-bold uppercase tracking-wider text-slate-400 mb-1.5">Días Asignados (Lun–Vie)</span>
-                <div class="text-xs font-bold text-indigo-900 bg-indigo-50/80 border border-indigo-200/80 px-3 py-1.5 rounded-xl">
-                  ${escapeHtml(formatPatientDaysLabel(p))}
-                </div>
-              </div>
-
-              <div>
-                <span class="block text-[10px] font-bold uppercase tracking-wider text-slate-400 mb-1.5">Tratamientos Indicados</span>
+                <span class="block text-[10px] font-bold uppercase tracking-wider text-slate-400 mb-1.5">Modalidades</span>
                 <div class="flex flex-wrap gap-1.5">
                   ${mods.map(m => {
                     const qty = (m === 'Electroterapia' || m === 'Magnetoterapia' || m === 'Termoterapia')
@@ -2907,19 +3261,21 @@
                 </div>
               </div>
 
-              ${p.diagnostico ? `
-                <div class="text-xs text-slate-600 bg-slate-50 px-3 py-2 rounded-xl border border-slate-200/70">
-                  <span class="font-bold text-slate-700">Dx:</span> ${escapeHtml(p.diagnostico)}
+              ${rehabLabel || detailsLabel || p.diagnostico ? `
+                <div class="bg-slate-50/90 border border-slate-200/80 rounded-xl p-3 space-y-1.5 text-xs text-slate-700">
+                  ${rehabLabel ? `<div><span class="font-bold text-slate-800">Rehabilitador:</span> ${escapeHtml(rehabLabel)}</div>` : ''}
+                  ${detailsLabel ? `<div><span class="font-bold text-slate-800">Detalles / Dosificación:</span> ${escapeHtml(detailsLabel)}</div>` : ''}
+                  ${p.diagnostico ? `<div><span class="font-bold text-slate-800">Dx:</span> ${escapeHtml(p.diagnostico)}</div>` : ''}
                 </div>
               ` : ''}
             </div>
 
-            <div class="px-5 py-3 bg-slate-50/90 border-t border-slate-200/80 grid grid-cols-2 gap-2.5">
-              <button onclick="openPatientModal('${escapeHtml(p.id)}')" class="w-full py-2 px-3 rounded-xl bg-white border border-slate-300 hover:bg-clinical-50 hover:border-clinical-300 text-slate-700 hover:text-clinical-800 text-xs font-bold flex items-center justify-center gap-1.5 transition shadow-2xs">
+            <div class="px-5 py-3 bg-slate-50 border-t border-slate-200/80 flex items-center justify-between gap-2">
+              <button onclick="openPatientModal('${escapeHtml(p.id)}')" class="flex-1 py-2 px-3 rounded-xl bg-white border border-slate-300 hover:bg-clinical-50 hover:border-clinical-300 text-slate-700 hover:text-clinical-800 text-xs font-bold flex items-center justify-center gap-1.5 transition">
                 <i class="fa-solid fa-pen-to-square text-clinical-600"></i>
-                <span>Editar Tarjeta</span>
+                <span>Editar</span>
               </button>
-              <button onclick="deletePatient('${escapeHtml(p.id)}')" class="w-full py-2 px-3 rounded-xl bg-white border border-rose-200 hover:bg-rose-50 hover:border-rose-300 text-rose-600 text-xs font-bold flex items-center justify-center gap-1.5 transition shadow-2xs">
+              <button onclick="deletePatient('${escapeHtml(p.id)}')" class="py-2 px-3 rounded-xl bg-white border border-rose-200 hover:bg-rose-50 hover:border-rose-300 text-rose-600 text-xs font-bold flex items-center justify-center gap-1.5 transition">
                 <i class="fa-solid fa-trash-can"></i>
                 <span>Eliminar</span>
               </button>
@@ -3024,6 +3380,10 @@
       document.getElementById('paciente-id').value = '';
       document.getElementById('paciente-numero-tarjeta').value = '';
       document.getElementById('paciente-sesiones-meta').value = '10';
+      document.getElementById('paciente-detalles-tratamiento').value = '';
+      document.getElementById('paciente-rehabilitador-tipo').value = '';
+      document.getElementById('paciente-rehabilitador-nombre').value = '';
+      toggleRehabilitadorNameInput();
 
       const checkboxes = form.querySelectorAll('input[name="modalidad"]');
       checkboxes.forEach(cb => {
@@ -3055,6 +3415,10 @@
         document.getElementById('paciente-sexo').value = patient.sexo || 'F';
         document.getElementById('paciente-sesiones-meta').value = patient.sesionesMeta || 10;
         document.getElementById('paciente-diagnostico').value = patient.diagnostico || '';
+        document.getElementById('paciente-detalles-tratamiento').value = patient.detallesTratamiento || '';
+        document.getElementById('paciente-rehabilitador-tipo').value = patient.rehabilitadorTipo || '';
+        toggleRehabilitadorNameInput();
+        document.getElementById('paciente-rehabilitador-nombre').value = patient.rehabilitadorNombre || '';
 
         const assignedDays = Array.isArray(patient.diasSemana) ? patient.diasSemana : [];
         dayCheckboxes.forEach(dcb => {
@@ -3105,6 +3469,14 @@
         const sexo = document.getElementById('paciente-sexo').value;
         const sesionesMeta = Number(document.getElementById('paciente-sesiones-meta').value) || 10;
         const diagnostico = document.getElementById('paciente-diagnostico').value.trim();
+        const detallesTratamiento = document.getElementById('paciente-detalles-tratamiento').value.trim();
+        const rehabilitadorTipo = document.getElementById('paciente-rehabilitador-tipo').value.trim();
+        let rehabilitadorNombre = (rehabilitadorTipo === 'Licenciado' || rehabilitadorTipo === 'Pasante')
+          ? normalizeStaffName(document.getElementById('paciente-rehabilitador-nombre').value)
+          : '';
+        if (rehabilitadorTipo === 'Licenciado' && rehabilitadorNombre) {
+          rehabilitadorNombre = addLicensedStaffMember(rehabilitadorNombre);
+        }
 
         const selectedModalidades = Array.from(
           document.querySelectorAll('#form-paciente input[name="modalidad"]:checked')
@@ -3153,7 +3525,10 @@
               modalidades: selectedModalidades,
               modalidadesCantidad,
               sesionesMeta,
-              diagnostico
+              diagnostico,
+              detallesTratamiento,
+              rehabilitadorTipo,
+              rehabilitadorNombre
             };
             showToast(`Tarjeta actualizada: ${nombre} ${apellido}.`, 'success');
           }
@@ -3170,7 +3545,10 @@
             modalidades: selectedModalidades,
             modalidadesCantidad,
             sesionesMeta,
-            diagnostico
+            diagnostico,
+            detallesTratamiento,
+            rehabilitadorTipo,
+            rehabilitadorNombre
           };
           patients.unshift(newPatient);
           showToast(`Nuevo paciente registrado: ${nombre} ${apellido}.`, 'success');
@@ -3312,7 +3690,7 @@
     function confirmClearDemoData() {
       openConfirmModal(
         'Limpiar todos los datos',
-        'Esta acción borrará todas las tarjetas de pacientes y registros de asistencia. Escribe la contraseña de la sala y el código de sello para confirmar.',
+        'Esta acción borrará todas las tarjetas de pacientes y registros de asistencia. Escribe la contraseña de la sala para confirmar.',
         () => {
           patients = [];
           attendanceMap = {};
@@ -3338,6 +3716,11 @@
     function copyWhatsAppReport() {
       const stats = calculateStatsForDate(selectedDateStr);
       const isPhysDay = isPhysiatristDay(selectedDateStr);
+      const rehabSummary = getPhysiotherapistsSummary();
+      const rehabLines = [
+        ...rehabSummary.licensedList.map(lic => `  - Lic. ${lic.name}: ${lic.totalPatients} pacientes a cargo (Hoy: ${lic.attendedToday})`),
+        `  - Pasantes (General): ${rehabSummary.pasantesTotalPatients} pacientes a cargo (Hoy: ${rehabSummary.pasantesAttendedToday})`
+      ].join('\n');
       const ageLines = AGE_GROUPS.map(g => {
         const sx = stats.ageSexCounts[g.id] || {
           M: 0,
@@ -3366,7 +3749,7 @@
         `  - Electroterapia: ${stats.electroPatients}`,
         `  - Magnetoterapia: ${stats.magnetoPatients}`,
         `  - Termoterapia: ${stats.termoPatients}`,
-        `  - Gimnasio: ${stats.gimnasioPatients} pacientes (${formatDecimal(stats.gimnasioTreatments)} tratamientos x6.5)`,
+        `  - Gimnasio: ${stats.gimnasioPatients} pacientes (${formatDecimal(stats.gimnasioTreatments)} tratamientos x6)`,
         `  - MNT: ${stats.mntPatients}`,
         ``,
         `🧩 *TERAPIA OCUPACIONAL (Aparte):* ${stats.ocupacionalPatients} pacientes`,
@@ -3375,7 +3758,10 @@
         `  - Podología: ${stats.podologiaPatients}`,
         `  - Foniatría: ${stats.foniatriaPatients}`,
         `  - Ozonoterapia: ${stats.ozonoterapiaPatients}`,
-        `  - Fisiatría: Consulta: ${stats.consultaFisiatraPatients} | Reconsulta: ${stats.reconsultaFisiatraPatients}`
+        `  - Fisiatría: Consulta: ${stats.consultaFisiatraPatients} | Reconsulta: ${stats.reconsultaFisiatraPatients}`,
+        ``,
+        `🧑‍⚕️ *FISIOTERAPEUTAS (Aparte):*`,
+        rehabLines
       ].join('\n');
 
       const tempTextarea = document.createElement('textarea');
@@ -3411,7 +3797,7 @@
         'Magnetoterapia',
         'Termoterapia',
         'Gimnasio Pacientes',
-        'Gimnasio Tratamientos (x6.5)',
+        'Gimnasio Tratamientos (x6)',
         'MNT',
         'Terapia Ocupacional',
         'Podología',
@@ -3478,7 +3864,7 @@
         'Magnetoterapia',
         'Termoterapia',
         'Gimnasio Pacientes',
-        'Gimnasio Tratamientos (x6.5)',
+        'Gimnasio Tratamientos (x6)',
         'MNT',
         'Terapia Ocupacional',
         'Podología',
