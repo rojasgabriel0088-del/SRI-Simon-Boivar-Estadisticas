@@ -657,7 +657,7 @@
           </div>
 
           <!-- Desglose Separado por Áreas: Fisioterapia, Terapia Ocupacional y Podología / Foniatría / Ozonoterapia / Fisiatría -->
-          <div class="mt-4 pt-3.5 border-t border-slate-200 grid grid-cols-1 md:grid-cols-3 gap-3">
+          <div class="mt-4 pt-3.5 border-t border-slate-200 grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-3">
             <div class="bg-sky-50/70 border border-sky-200/80 rounded-xl p-3">
               <div class="flex items-center justify-between mb-1">
                 <span class="text-[11px] font-extrabold uppercase tracking-wider text-sky-900">Fisioterapia</span>
@@ -665,6 +665,15 @@
               </div>
               <div id="stat-area-fisioterapia" class="text-lg font-extrabold text-sky-950">0 pac. · 0 tr.</div>
               <div id="stat-area-fisioterapia-detalle" class="text-[11px] text-sky-800 mt-0.5">Electro: 0 · Magneto: 0 · Termo: 0 · Gym: 0</div>
+            </div>
+
+            <div class="bg-blue-50/80 border border-blue-300/80 rounded-xl p-3">
+              <div class="flex items-center justify-between mb-1">
+                <span class="text-[11px] font-extrabold uppercase tracking-wider text-blue-950">Depto. Electroterapia</span>
+                <span class="text-[10px] font-bold text-blue-800">Corriente + Magneto</span>
+              </div>
+              <div id="stat-depto-electro-pacientes" class="text-lg font-extrabold text-blue-950">0 pacientes</div>
+              <div id="stat-depto-electro-tratamientos" class="text-xs font-bold text-blue-900 mt-0.5">0 tratamientos (0 corr. + 0 mag.)</div>
             </div>
 
             <div class="bg-purple-50/70 border border-purple-200/80 rounded-xl p-3">
@@ -2259,6 +2268,8 @@
       let electroTreatments = 0;
       let magnetoTreatments = 0;
       let termoTreatments = 0;
+      let deptoElectroPatients = 0;
+      let deptoElectroTreatments = 0;
       let gimnasioPatients = 0;
       let ocupacionalPatients = 0;
       let mntPatients = 0;
@@ -2295,7 +2306,10 @@
         termoTreatments += qTermo;
 
         const patientElectroDepto = qElectro + qMagneto;
-        const hasElectroDepto = patientElectroDepto > 0;
+        if (patientElectroDepto > 0) {
+          deptoElectroPatients += 1;
+          deptoElectroTreatments += patientElectroDepto;
+        }
         ageSexCounts[group.id].deptoElectroTreatments += patientElectroDepto;
         ageSexCounts[group.id].gymPatientsM += isMasc ? 1 : 0;
         ageSexCounts[group.id].gymPatientsF += isFem ? 1 : 0;
@@ -2304,12 +2318,12 @@
         ageSexCounts[group.id].gymTreatments = ageSexCounts[group.id].gymTreatmentsM + ageSexCounts[group.id].gymTreatmentsF;
 
         if (isMasc) {
-          if (hasElectroDepto) {
+          if (patientElectroDepto > 0) {
             ageSexCounts[group.id].deptoElectroPatientsM += 1;
           }
           ageSexCounts[group.id].deptoElectroM += patientElectroDepto;
         } else if (isFem) {
-          if (hasElectroDepto) {
+          if (patientElectroDepto > 0) {
             ageSexCounts[group.id].deptoElectroPatientsF += 1;
           }
           ageSexCounts[group.id].deptoElectroF += patientElectroDepto;
@@ -2366,6 +2380,8 @@
         electroPatients: electroTreatments,
         magnetoPatients: magnetoTreatments,
         termoPatients: termoTreatments,
+        deptoElectroPatients,
+        deptoElectroTreatments,
         gimnasioPatients,
         gimnasioTreatments,
         ocupacionalPatients,
@@ -2394,6 +2410,7 @@
       if (totalSesEl) totalSesEl.textContent = formatDecimal(stats.totalTreatments + stats.gimnasioTreatments);
 
       const electroEl = document.getElementById('stat-mod-electro');
+      const deptoElectroEl = document.getElementById('stat-depto-electro-resumen');
       const magnetoEl = document.getElementById('stat-mod-magneto');
       const termoEl = document.getElementById('stat-mod-termo');
       const gymEl = document.getElementById('stat-mod-gimnasio');
@@ -2403,6 +2420,9 @@
       const fisiatraEl = document.getElementById('stat-mod-fisiatra');
 
       if (electroEl) electroEl.textContent = stats.electroPatients;
+      if (deptoElectroEl) {
+        deptoElectroEl.textContent = `Depto: ${stats.deptoElectroPatients} pac. · ${stats.deptoElectroTreatments} tr.`;
+      }
       if (magnetoEl) magnetoEl.textContent = stats.magnetoPatients;
       if (termoEl) termoEl.textContent = stats.termoPatients;
       if (gymEl) gymEl.textContent = `${stats.gimnasioPatients} (${formatDecimal(stats.gimnasioTreatments)} tr.)`;
@@ -2415,6 +2435,8 @@
 
       const fisioMainEl = document.getElementById('stat-area-fisioterapia');
       const fisioDetEl = document.getElementById('stat-area-fisioterapia-detalle');
+      const deptoElectroPacEl = document.getElementById('stat-depto-electro-pacientes');
+      const deptoElectroTrEl = document.getElementById('stat-depto-electro-tratamientos');
       const ocupMainEl = document.getElementById('stat-area-ocupacional');
       const espMainEl = document.getElementById('stat-area-especialidades');
       const espDetEl = document.getElementById('stat-area-especialidades-detalle');
@@ -2424,6 +2446,12 @@
       }
       if (fisioDetEl) {
         fisioDetEl.textContent = `Electro: ${stats.electroPatients} · Magneto: ${stats.magnetoPatients} · Termo: ${stats.termoPatients} · Gym: ${stats.gimnasioPatients}`;
+      }
+      if (deptoElectroPacEl) {
+        deptoElectroPacEl.textContent = `${stats.deptoElectroPatients} ${stats.deptoElectroPatients === 1 ? 'paciente' : 'pacientes'}`;
+      }
+      if (deptoElectroTrEl) {
+        deptoElectroTrEl.textContent = `${stats.deptoElectroTreatments} ${stats.deptoElectroTreatments === 1 ? 'tratamiento' : 'tratamientos'} (${stats.electroPatients} corr. + ${stats.magnetoPatients} mag.)`;
       }
       if (ocupMainEl) {
         ocupMainEl.textContent = `${stats.ocupacionalPatients} ${stats.ocupacionalPatients === 1 ? 'paciente' : 'pacientes'}`;
@@ -3848,8 +3876,10 @@
         `  - Electroterapia: ${stats.electroPatients}`,
         `  - Magnetoterapia: ${stats.magnetoPatients}`,
         `  - Termoterapia: ${stats.termoPatients}`,
-        `  - Gimnasio: ${stats.gimnasioPatients} pacientes (${formatDecimal(stats.gimnasioTreatments)} tratamientos x6)`,
+        `  - Gimnasio: ${stats.gimnasioPatients} pacientes (${formatDecimal(stats.gimnasioTreatments)} tratamientos x6.5)`,
         `  - MNT: ${stats.mntPatients}`,
+        ``,
+        `⚡ *DEPARTAMENTO DE ELECTROTERAPIA (Aparte):* ${stats.deptoElectroPatients} pacientes · ${stats.deptoElectroTreatments} tratamientos (${stats.electroPatients} corriente + ${stats.magnetoPatients} magneto)`,
         ``,
         `🧩 *TERAPIA OCUPACIONAL (Aparte):* ${stats.ocupacionalPatients} pacientes`,
         ``,
@@ -3892,6 +3922,8 @@
         'Femenino (F)',
         'Fisioterapia Pacientes',
         'Fisioterapia Tratamientos',
+        'Depto Electro Pacientes',
+        'Depto Electro Tratamientos',
         'Electroterapia',
         'Magnetoterapia',
         'Termoterapia',
@@ -3919,6 +3951,8 @@
         stats.femCount,
         stats.fisioterapiaPatients,
         formatDecimal(stats.fisioterapiaTotalTratamientos),
+        stats.deptoElectroPatients,
+        stats.deptoElectroTreatments,
         stats.electroPatients,
         stats.magnetoPatients,
         stats.termoPatients,
@@ -3959,6 +3993,8 @@
         'Femenino (F)',
         'Fisioterapia Pacientes',
         'Fisioterapia Tratamientos',
+        'Depto Electro Pacientes',
+        'Depto Electro Tratamientos',
         'Electroterapia',
         'Magnetoterapia',
         'Termoterapia',
@@ -3988,6 +4024,8 @@
           st.femCount,
           st.fisioterapiaPatients,
           formatDecimal(st.fisioterapiaTotalTratamientos),
+          st.deptoElectroPatients,
+          st.deptoElectroTreatments,
           st.electroPatients,
           st.magnetoPatients,
           st.termoPatients,
